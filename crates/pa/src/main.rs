@@ -47,9 +47,11 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::List) => {
+            ensure_prompts_available(&assembler)?;
             list_prompts(&assembler);
         }
         Some(Commands::Completions { shell }) => {
+            ensure_prompts_available(&assembler)?;
             let shell = parse_shell(&shell)?;
             generate_completions(shell, &assembler)?;
         }
@@ -57,6 +59,7 @@ fn main() -> Result<()> {
             run_parts(&assembler, &files)?;
         }
         None => {
+            ensure_prompts_available(&assembler)?;
             let prompt = cli
                 .prompt
                 .ok_or_else(|| anyhow!("prompt name is required"))?;
@@ -115,6 +118,14 @@ fn run_parts(assembler: &PromptAssembler, files: &[String]) -> Result<()> {
     let output = assembler.assemble_parts(cwd.as_ref(), files)?;
     print!("{output}");
     Ok(())
+}
+
+fn ensure_prompts_available(assembler: &PromptAssembler) -> Result<()> {
+    if assembler.has_prompts() {
+        Ok(())
+    } else {
+        bail!("no prompts defined; ensure config.toml exists with prompt entries");
+    }
 }
 
 fn list_prompts(assembler: &PromptAssembler) {

@@ -217,6 +217,35 @@ fn completions_error_on_unsupported_shell() {
 }
 
 #[test]
+fn parts_command_succeeds_with_no_prompts_defined() {
+    let temp = TempDir::new().unwrap();
+    let root = utf8_path(temp.path());
+    let (xdg_home, _library_dir) = prepare_config(&temp);
+
+    write_file(root, "local.md", "Local only\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["parts", "local.md"]);
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Local only"));
+}
+
+#[test]
+fn list_command_errors_when_no_prompts_defined() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, _library_dir) = prepare_config(&temp);
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.arg("list");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("no prompts defined"));
+}
+
+#[test]
 fn parts_command_concatenates_files_from_cwd_and_prompt_path() {
     let temp = TempDir::new().unwrap();
     let root = utf8_path(temp.path());

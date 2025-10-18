@@ -120,6 +120,11 @@ impl PromptAssembler {
             .collect()
     }
 
+    #[must_use]
+    pub fn has_prompts(&self) -> bool {
+        !self.config.prompts.is_empty()
+    }
+
     fn resolve_prompt_path(&self, spec: &PromptSpec) -> Option<Utf8PathBuf> {
         spec.prompt_path_override
             .clone()
@@ -214,10 +219,6 @@ fn load_config(root: &Utf8Path) -> Result<Config> {
             let content = read_utf8(&entry)?;
             merge_config(root, &content, &mut prompts, &mut default_prompt_path)?;
         }
-    }
-
-    if prompts.is_empty() {
-        bail!("no prompts defined; ensure config.toml exists with prompt entries");
     }
 
     Ok(Config {

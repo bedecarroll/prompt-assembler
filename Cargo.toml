@@ -55,7 +55,7 @@ pr-run-mode = "plan"
 # Build only the required packages, and individually
 precise-builds = true
 # Path that installers should place binaries in
-install-path = "~/.local/bin"
+install-path = ["$PA_INSTALL_DIR/bin", "~/.local/bin"]
 # Whether to install an updater program
 install-updater = false
 

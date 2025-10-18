@@ -61,6 +61,15 @@ cargo install prompt-assembler --version 0.1.1
 > **Note**  
 > Update the version in the commands above if a newer release is available.
 
+#### Installer destination
+
+The installer places the `pa` binary in the first writable directory from:
+
+1. `$PA_INSTALL_DIR/bin` (if the environment variable is set)
+2. `~/.local/bin`
+
+On Unix-like systems, make sure one of those directories is on your `PATH`. On Windows, set `PA_INSTALL_DIR` to `%USERPROFILE%\.cargo` before running the installer so the binary lands in the default Cargo location (`%USERPROFILE%\.cargo\bin`), which is already on `PATH` when installed via `rustup`.
+
 ## Config file
 
 ```toml

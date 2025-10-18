@@ -1,0 +1,23 @@
+[package]
+name = "pa"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/bedecarroll/prompt-assembler"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+directories.workspace = true
+camino.workspace = true
+prompt-assembler = { path = "../prompt-assembler" }
+atty.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+camino.workspace = true
+insta.workspace = true
+predicates.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tempfile.workspace = true

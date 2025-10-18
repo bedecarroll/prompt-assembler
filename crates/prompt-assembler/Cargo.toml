@@ -1,0 +1,23 @@
+[package]
+name = "prompt-assembler"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/bedecarroll/prompt-assembler"
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+directories.workspace = true
+indexmap.workspace = true
+minijinja.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,24 @@
+min_version = "2024.11.1"
+
+[tools]
+typos = "latest"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt"
+
+[tasks.clippy]
+description = "Run Clippy with pedantic lints"
+run = "cargo clippy --all-targets -- -D warnings -D clippy::pedantic"
+
+[tasks.unit]
+description = "Run test suite"
+run = "cargo test"
+
+[tasks.dist]
+description = "Build release artifacts with cargo-dist"
+run = "cargo dist"
+
+[tasks.lint]
+description = "Spell-check docs and code"
+run = "typos"

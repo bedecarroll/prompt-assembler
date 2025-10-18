@@ -1,0 +1,56 @@
+[workspace]
+members = [
+    "crates/prompt-assembler",
+    "crates/pa",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+directories = "5"
+minijinja = { version = "1", features = ["loader"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+camino = "1"
+thiserror = "1"
+indexmap = { version = "2", features = ["serde"] }
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+insta = { version = "1", features = ["yaml"] }
+atty = "0.2"
+
+[workspace.metadata.mise.tasks]
+fmt.run = "cargo fmt"
+clippy.run = "cargo clippy --all-targets -- -D warnings -D clippy::pedantic"
+unit.run = "cargo test"
+dist.run = "cargo dist"
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.29.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = []
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+pedantic = "deny"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

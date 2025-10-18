@@ -1,2 +1,201 @@
 # prompt-assembler
-Create your own library of snippets to assemble prompts
+
+Create your own library of snippets to assemble prompts.
+
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+  - [Simple prompt](#simple-prompt)
+  - [Piping input](#piping-input)
+  - [Multiple prompts with variables](#multiple-prompts-with-variables)
+  - [Jinja templates](#jinja-template)
+  - [Shell completions](#shell-completions)
+- [Development](#development)
+- [Releasing](#releasing)
+- [License](#license)
+
+## Features
+
+- Uses XDG
+  - ~/.config/prompt-assembler/
+- Supports splitting your configuration
+  - ~/.config/prompt-assembler/conf.d/
+  - uses lexical order
+- Uses TOML for config
+- `prompt_path` is optional; when omitted, prompt files are resolved relative to the directory containing `config.toml`
+- You can add variables to your prompts, up to 9 arguments starting at `{0}`
+  - Use `{{` for literal curly braces in fragments
+  - Beware of making overly long prompts however as you might run into shell limitations
+- Sequence prompts can consume piped stdin as their first argument (`{0}`)
+- Can use Jinja templates (using minijinja)
+  - Allows you to create parameterized templates
+- Template data files support JSON or TOML formats (auto-detected by extension)
+- Shell completions include your prompts
+- Prints your completed prompts on stdout
+
+## Installation
+
+The tool is distributed as a single Rust binary. Install with Cargo:
+
+```bash
+cargo install prompt-assembler
+```
+
+> **Note**  
+> If you’ve already installed an older version, add `--force` to upgrade.
+
+## Config file
+
+```toml
+prompt_path = "~/.config/prompt-assembler/"
+
+[prompt.create-ticket]
+prompt_path = "~/.config/prompt-assembler/"
+# Paths, in order
+prompts = [
+  "ticket.md"
+]
+
+[prompt.update-ticket]
+prompts = [
+  "get-ticket.md",
+  "update-ticket.md"
+]
+
+[prompt.troubleshooting]
+template = "troubleshooting.j2"
+
+[prompt.echo]
+prompts = ["echo.md"]
+```
+
+### Configuration layout
+
+Configuration follows the XDG base directory spec:
+
+- Base directory: `~/.config/prompt-assembler/`
+- Optional fragments: any `*.toml` file inside `~/.config/prompt-assembler/conf.d/` are loaded in lexical order.
+- If a prompt omits `prompt_path`, prompt fragments are resolved relative to the directory that contained the TOML file where the prompt was defined.
+
+## Examples
+
+### Simple prompt
+
+```bash
+$ cat ticket.md
+# New ticket prompt
+
+Create a new ticket
+$ pa create-ticket
+# New ticket prompt
+
+Create a new ticket
+```
+
+### Piping input
+
+```bash
+$ cat echo.md
+Echo {0}
+$ echo "piped text" | pa echo
+Echo piped text
+```
+
+### Multiple prompts with variables
+
+```bash
+$ cat get-ticket.md update-ticket.md
+# Get ticket markdown
+
+Search for ticket {0} using your MCP
+# Update ticket markdown
+
+Update the ticket with:
+{1}
+$ pa update-ticket tic-123 "working on ticket now"
+# Get ticket markdown
+
+Search for ticket tic-123 using your MCP
+# Update ticket markdown
+
+Update the ticket with:
+working on ticket now
+```
+
+### Jinja template
+
+```bash
+$ cat troubleshooting.j2 always.j2 vars.json
+Hello {{ var }}!
+{% include 'always.j2' %}
+How are you {{ name }}?
+{
+  "var": "World",
+  "name": "Bede"
+}
+$ pa troubleshooting vars.json
+Hello World!
+How are you Bede?
+```
+
+Template prompts require a structured data file. The CLI infers the format from the extension:
+
+- `.json` → JSON
+- `.toml` → TOML
+
+Sequence prompts reject structured data.
+
+### Shell completions
+
+Generate completions for your shell at runtime:
+
+```bash
+$ pa completions bash > ~/.local/share/bash-completion/pa
+$ source ~/.local/share/bash-completion/pa
+```
+
+`pa` inspects your configuration at generation time, so completions stay in sync with your prompt names. Regenerate the script after adding or removing prompts.
+
+## Flags
+
+- -h help
+- -V version
+
+## Development
+
+Use `mise` tasks for local workflows:
+
+- `mise run fmt`
+- `mise run clippy`
+- `mise run unit`
+- `mise run dist` (wraps `cargo dist` to build release artifacts)
+- `mise run lint` (spell-checks with `typos`)
+
+Running these commands directly with Cargo works too:
+
+```bash
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings -D clippy::pedantic
+cargo test
+```
+
+## Releasing
+
+Release automation is powered by [`cargo dist`](https://github.com/axodotdev/cargo-dist) and a GitHub Actions workflow.
+
+1. Update `Cargo.toml` with the desired version.
+2. Tag the commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. The `Release` workflow builds artifacts and publishes a GitHub Release automatically.
+
+You can preview the artifacts locally with:
+
+```bash
+cargo dist build
+```
+
+## License
+
+MIT

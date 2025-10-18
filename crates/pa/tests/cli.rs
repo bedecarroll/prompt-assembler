@@ -239,9 +239,9 @@ prompts = ["placeholder.md"]
     let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
     cmd.args(["parts", "local.md", "library.md"]);
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Local holds {0}\nLibrary keeps {0}\n"));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Local holds {0}\nLibrary keeps {0}\n",
+    ));
 }
 
 #[test]

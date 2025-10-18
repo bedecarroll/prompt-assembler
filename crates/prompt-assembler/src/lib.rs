@@ -130,6 +130,51 @@ impl PromptAssembler {
     pub fn prompt_kind(&self, name: &str) -> Option<&PromptKind> {
         self.config.prompts.get(name).map(|spec| &spec.kind)
     }
+
+    /// Assemble a sequence of raw prompt parts by name without placeholder substitution.
+    ///
+    /// # Errors
+    /// Returns an error when a part cannot be located or read.
+    pub fn assemble_parts(&self, working_dir: &Utf8Path, part_names: &[String]) -> Result<String> {
+        if part_names.is_empty() {
+            bail!("no parts provided");
+        }
+
+        let mut output = String::new();
+        for name in part_names {
+            let resolved = self.resolve_part_path(working_dir, name)?;
+            let contents = read_utf8(resolved.as_path())
+                .with_context(|| format!("failed to read part '{name}' at {resolved}"))?;
+            output.push_str(&contents);
+        }
+
+        Ok(output)
+    }
+
+    fn resolve_part_path(&self, working_dir: &Utf8Path, raw: &str) -> Result<Utf8PathBuf> {
+        let candidate = Utf8PathBuf::from(raw);
+
+        if candidate.is_absolute() {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+            bail!("missing part '{raw}'");
+        }
+
+        let cwd_candidate = working_dir.join(&candidate);
+        if cwd_candidate.exists() {
+            return Ok(cwd_candidate);
+        }
+
+        if let Some(base) = &self.config.default_prompt_path {
+            let prompt_candidate = base.join(&candidate);
+            if prompt_candidate.exists() {
+                return Ok(prompt_candidate);
+            }
+        }
+
+        bail!("missing part '{raw}'")
+    }
 }
 
 fn load_config(root: &Utf8Path) -> Result<Config> {

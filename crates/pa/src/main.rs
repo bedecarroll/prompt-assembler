@@ -31,6 +31,11 @@ enum Commands {
     List,
     /// Generate shell completions
     Completions { shell: String },
+    /// Concatenate raw prompt parts without placeholder substitution
+    Parts {
+        #[arg(value_name = "FILE", num_args = 1..)]
+        files: Vec<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -47,6 +52,9 @@ fn main() -> Result<()> {
         Some(Commands::Completions { shell }) => {
             let shell = parse_shell(&shell)?;
             generate_completions(shell, &assembler)?;
+        }
+        Some(Commands::Parts { files }) => {
+            run_parts(&assembler, files)?;
         }
         None => {
             let prompt = cli
@@ -95,6 +103,16 @@ fn run_prompt(assembler: &PromptAssembler, prompt: &str, args: Vec<String>) -> R
         }
     };
 
+    print!("{output}");
+    Ok(())
+}
+
+fn run_parts(assembler: &PromptAssembler, files: Vec<String>) -> Result<()> {
+    let cwd = std::env::current_dir().context("failed to determine current directory")?;
+    let cwd = Utf8PathBuf::from_path_buf(cwd)
+        .map_err(|_| anyhow!("current directory is not valid UTF-8"))?;
+
+    let output = assembler.assemble_parts(cwd.as_ref(), &files)?;
     print!("{output}");
     Ok(())
 }

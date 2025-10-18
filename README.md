@@ -38,14 +38,37 @@ Create your own library of snippets to assemble prompts.
 
 ## Installation
 
-The tool is distributed as a single Rust binary. Install with Cargo:
+Prebuilt installers are available for macOS, Linux, and Windows once a release is tagged.
+
+### Shell (macOS and Linux)
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/bedecarroll/prompt-assembler/releases/download/v0.1.1/pa-installer.sh | sh
+```
+
+### PowerShell (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt-assembler/releases/download/v0.1.1/pa-installer.ps1 | iex"
+```
+
+### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler
+cargo install prompt-assembler --version 0.1.1
 ```
 
 > **Note**  
-> If you’ve already installed an older version, add `--force` to upgrade.
+> Update the version in the commands above if a newer release is available.
+
+#### Installer destination
+
+The installer places the `pa` binary in the first writable directory from:
+
+1. `$PA_INSTALL_DIR/bin` (if the environment variable is set)
+2. `~/.local/bin`
+
+On Unix-like systems, make sure one of those directories is on your `PATH`. On Windows, set `PA_INSTALL_DIR` to `%USERPROFILE%\.cargo` before running the installer so the binary lands in the default Cargo location (`%USERPROFILE%\.cargo\bin`), which is already on `PATH` when installed via `rustup`.
 
 ## Config file
 

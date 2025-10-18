@@ -217,6 +217,88 @@ fn completions_error_on_unsupported_shell() {
 }
 
 #[test]
+fn parts_command_succeeds_with_no_prompts_defined() {
+    let temp = TempDir::new().unwrap();
+    let root = utf8_path(temp.path());
+    let (xdg_home, _library_dir) = prepare_config(&temp);
+
+    write_file(root, "local.md", "Local only\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["parts", "local.md"]);
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Local only"));
+}
+
+#[test]
+fn list_command_errors_when_no_prompts_defined() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, _library_dir) = prepare_config(&temp);
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.arg("list");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("no prompts defined"));
+}
+
+#[test]
+fn parts_command_concatenates_files_from_cwd_and_prompt_path() {
+    let temp = TempDir::new().unwrap();
+    let root = utf8_path(temp.path());
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+prompt_path = "snippets"
+
+[prompt.placeholder]
+prompts = ["placeholder.md"]
+"#,
+    )
+    .unwrap();
+    write_file(&library_dir, "snippets/placeholder.md", "unused\n");
+    write_file(&library_dir, "snippets/library.md", "Library keeps {0}\n");
+    write_file(root, "local.md", "Local holds {0}\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["parts", "local.md", "library.md"]);
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Local holds {0}\nLibrary keeps {0}\n",
+    ));
+}
+
+#[test]
+fn parts_command_errors_when_file_missing() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+prompt_path = "snippets"
+
+[prompt.placeholder]
+prompts = ["placeholder.md"]
+"#,
+    )
+    .unwrap();
+    write_file(&library_dir, "snippets/placeholder.md", "unused\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["parts", "missing.md"]);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("missing part"));
+}
+
+#[test]
 fn errors_for_unknown_prompt_name() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

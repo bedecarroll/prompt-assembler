@@ -223,6 +223,24 @@ fn prompt_path_override_applies_per_prompt() {
 }
 
 #[test]
+fn loads_without_prompt_definitions() {
+    let temp = TempDir::new().unwrap();
+    let root = utf8_path(temp.path());
+
+    let assembler = PromptAssembler::from_directory(root).expect("load assembler without prompts");
+
+    assert!(!assembler.has_prompts());
+
+    write_file(root, "standalone.md", "standalone content\n");
+
+    let assembled_parts = assembler
+        .assemble_parts(root, &["standalone.md".to_string()])
+        .expect("assemble parts without prompt definitions");
+
+    assert_eq!(assembled_parts, "standalone content\n");
+}
+
+#[test]
 fn default_prompt_path_is_config_directory() {
     let temp = TempDir::new().unwrap();
     let root = utf8_path(temp.path());

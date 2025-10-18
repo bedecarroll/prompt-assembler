@@ -11,6 +11,7 @@ Create your own library of snippets to assemble prompts.
   - [Simple prompt](#simple-prompt)
   - [Piping input](#piping-input)
   - [Multiple prompts with variables](#multiple-prompts-with-variables)
+  - [Ad-hoc parts](#ad-hoc-parts)
   - [Jinja templates](#jinja-template)
   - [Shell completions](#shell-completions)
 - [Development](#development)
@@ -29,6 +30,7 @@ Create your own library of snippets to assemble prompts.
 - You can add variables to your prompts, up to 9 arguments starting at `{0}`
   - Use `{{` for literal curly braces in fragments
   - Beware of making overly long prompts however as you might run into shell limitations
+- Concatenate raw parts on demand with `pa parts`, which skips placeholder substitution so braces like `{0}` remain literal
 - Sequence prompts can consume piped stdin as their first argument (`{0}`)
 - Can use Jinja templates (using minijinja)
   - Allows you to create parameterized templates
@@ -43,19 +45,19 @@ Prebuilt installers are available for macOS, Linux, and Windows once a release i
 ### Shell (macOS and Linux)
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/bedecarroll/prompt-assembler/releases/download/v0.1.1/pa-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.0/pa-installer.sh | sh
 ```
 
 ### PowerShell (Windows)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt-assembler/releases/download/v0.1.1/pa-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.0/pa-installer.ps1 | iex"
 ```
 
 ### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler --version 0.1.1
+cargo install prompt-assembler --version 0.2.0
 ```
 
 > **Note**  
@@ -147,6 +149,23 @@ Search for ticket tic-123 using your MCP
 Update the ticket with:
 working on ticket now
 ```
+
+### Ad-hoc parts
+
+Use `pa parts` when you want to stitch a few fragments together without defining a prompt first. Each filename is searched relative to your current working directory and then the library `prompt_path`.
+
+```bash
+$ ls
+intro.md outro.md
+$ cat intro.md outro.md
+Intro with literal {0}
+Outro with literal {1}
+$ pa parts intro.md outro.md
+Intro with literal {0}
+Outro with literal {1}
+```
+
+The command prints files verbatim—placeholders such as `{0}` are *not* substituted, which makes it safe for assembling fragments that intentionally contain curly braces.
 
 ### Jinja template
 

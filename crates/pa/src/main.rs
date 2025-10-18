@@ -31,6 +31,11 @@ enum Commands {
     List,
     /// Generate shell completions
     Completions { shell: String },
+    /// Concatenate raw prompt parts without placeholder substitution
+    Parts {
+        #[arg(value_name = "FILE", num_args = 1..)]
+        files: Vec<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -42,13 +47,19 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::List) => {
+            ensure_prompts_available(&assembler)?;
             list_prompts(&assembler);
         }
         Some(Commands::Completions { shell }) => {
+            ensure_prompts_available(&assembler)?;
             let shell = parse_shell(&shell)?;
             generate_completions(shell, &assembler)?;
         }
+        Some(Commands::Parts { files }) => {
+            run_parts(&assembler, &files)?;
+        }
         None => {
+            ensure_prompts_available(&assembler)?;
             let prompt = cli
                 .prompt
                 .ok_or_else(|| anyhow!("prompt name is required"))?;
@@ -97,6 +108,24 @@ fn run_prompt(assembler: &PromptAssembler, prompt: &str, args: Vec<String>) -> R
 
     print!("{output}");
     Ok(())
+}
+
+fn run_parts(assembler: &PromptAssembler, files: &[String]) -> Result<()> {
+    let cwd = std::env::current_dir().context("failed to determine current directory")?;
+    let cwd = Utf8PathBuf::from_path_buf(cwd)
+        .map_err(|_| anyhow!("current directory is not valid UTF-8"))?;
+
+    let output = assembler.assemble_parts(cwd.as_ref(), files)?;
+    print!("{output}");
+    Ok(())
+}
+
+fn ensure_prompts_available(assembler: &PromptAssembler) -> Result<()> {
+    if assembler.has_prompts() {
+        Ok(())
+    } else {
+        bail!("no prompts defined; ensure config.toml exists with prompt entries");
+    }
 }
 
 fn list_prompts(assembler: &PromptAssembler) {

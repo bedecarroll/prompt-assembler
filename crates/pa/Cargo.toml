@@ -12,12 +12,14 @@ directories.workspace = true
 camino.workspace = true
 prompt-assembler = { path = "../prompt-assembler" }
 atty.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
 camino.workspace = true
 insta.workspace = true
 predicates.workspace = true
-serde_json.workspace = true
 serde_yaml.workspace = true
 tempfile.workspace = true

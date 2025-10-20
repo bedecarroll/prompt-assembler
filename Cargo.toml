@@ -26,6 +26,7 @@ predicates = "3"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
 atty = "0.2"
+time = { version = "0.3", features = ["formatting", "std"] }
 
 [workspace.metadata.mise.tasks]
 fmt.run = "cargo fmt"

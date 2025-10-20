@@ -13,6 +13,7 @@ Create your own library of snippets to assemble prompts.
   - [Multiple prompts with variables](#multiple-prompts-with-variables)
   - [Ad-hoc parts](#ad-hoc-parts)
   - [Jinja templates](#jinja-template)
+  - [JSON API](#json-api)
   - [Shell completions](#shell-completions)
 - [Development](#development)
 - [Releasing](#releasing)
@@ -189,6 +190,16 @@ Template prompts require a structured data file. The CLI infers the format from 
 - `.toml` → TOML
 
 Sequence prompts reject structured data.
+
+### JSON API
+
+`pa` exposes machine-readable output for launchers or automation that need prompt metadata:
+
+- `pa list --json` emits an envelope with `schema_version`, an ISO-8601 `generated_at` timestamp, and a `prompts` array. Each prompt object includes `name`, optional `description`, `tags`, `vars`, `stdin_supported`, `last_modified`, and the absolute `source_path` of the TOML definition.
+- `pa show <prompt> --json` returns the same prompt object for a single entry and exits with code `1` when the prompt is unknown.
+- `pa validate [--json]` checks configuration integrity. It exits `0` when valid, `2` when invalid, and prints diagnostics. The JSON envelope contains `errors` and `warnings`, each with `file`, optional `line`, `code`, and `message` fields.
+
+All JSON responses currently use `schema_version = 1`. If configuration files are unreadable (for example, the config directory is missing), commands exit with code `127`.
 
 ### Shell completions
 

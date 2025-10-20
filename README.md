@@ -46,19 +46,19 @@ Prebuilt installers are available for macOS, Linux, and Windows once a release i
 ### Shell (macOS and Linux)
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.0/pa-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.1/pa-installer.sh | sh
 ```
 
 ### PowerShell (Windows)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.0/pa-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt-assembler/releases/download/v0.2.1/pa-installer.ps1 | iex"
 ```
 
 ### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler --version 0.2.0
+cargo install prompt-assembler --version 0.2.1
 ```
 
 > **Note**  

@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Read;
+use std::time::SystemTime;
 
 use anyhow::{Context, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -8,20 +9,22 @@ use directories::BaseDirs;
 use indexmap::IndexMap;
 use minijinja::Environment;
 use serde::Deserialize;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub root: Utf8PathBuf,
     pub default_prompt_path: Option<Utf8PathBuf>,
     pub prompts: IndexMap<String, PromptSpec>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct PromptSpec {
     pub prompt_path_override: Option<Utf8PathBuf>,
     pub kind: PromptKind,
+    pub metadata: PromptMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,8 +34,120 @@ pub enum PromptKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct PromptMetadata {
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub vars: Vec<PromptVariable>,
+    pub stdin_supported: Option<bool>,
+    pub source: PromptSource,
+}
+
+#[derive(Debug, Clone)]
+pub struct PromptSource {
+    pub path: Utf8PathBuf,
+    pub last_modified: Option<SystemTime>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptVariable {
+    pub name: String,
+    pub required: bool,
+    pub kind: PromptVariableKind,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptVariableKind {
+    String,
+    Path,
+    Number,
+    Boolean,
+}
+
+impl PromptVariableKind {
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PromptVariableKind::String => "string",
+            PromptVariableKind::Path => "path",
+            PromptVariableKind::Number => "number",
+            PromptVariableKind::Boolean => "boolean",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigIssueCode {
+    DuplicateVar,
+    Override,
+    InvalidPrompt,
+    ParseError,
+}
+
+impl ConfigIssueCode {
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConfigIssueCode::DuplicateVar => "duplicate_var",
+            ConfigIssueCode::Override => "override",
+            ConfigIssueCode::InvalidPrompt => "invalid_prompt",
+            ConfigIssueCode::ParseError => "parse_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigIssue {
+    pub code: ConfigIssueCode,
+    pub message: String,
+    pub path: Utf8PathBuf,
+    pub line: Option<u32>,
+}
+
+impl ConfigIssue {
+    fn new(
+        code: ConfigIssueCode,
+        path: Utf8PathBuf,
+        line: Option<u32>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            path,
+            line,
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigDiagnostics {
+    pub errors: Vec<ConfigIssue>,
+    pub warnings: Vec<ConfigIssue>,
+}
+
+#[derive(Debug, Error)]
+pub enum LoadConfigError {
+    #[error("failed to enumerate configuration directory {path}: {source}")]
+    ReadDir {
+        path: Utf8PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("configuration is invalid")]
+    Invalid { diagnostics: ConfigDiagnostics },
+    #[error("failed to read configuration file {path}: {source}")]
+    Io {
+        path: Utf8PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub struct PromptAssembler {
     config: Config,
+    warnings: Vec<ConfigIssue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,8 +170,17 @@ impl PromptAssembler {
     /// # Errors
     /// Returns an error if configuration files are missing, unreadable, or invalid.
     pub fn from_directory(dir: &Utf8Path) -> Result<Self> {
-        let config = load_config(dir)?;
-        Ok(Self { config })
+        Self::load_with_diagnostics(dir).map_err(anyhow::Error::from)
+    }
+
+    /// Construct an assembler while retaining structured diagnostics.
+    ///
+    /// # Errors
+    /// Returns a [`LoadConfigError`] when configuration files cannot be read or contain
+    /// invalid definitions.
+    pub fn load_with_diagnostics(dir: &Utf8Path) -> std::result::Result<Self, LoadConfigError> {
+        let ConfigLoad { config, warnings } = load_config(dir)?;
+        Ok(Self { config, warnings })
     }
 
     /// Assemble the prompt identified by `name` using provided arguments and optional data.
@@ -121,6 +245,16 @@ impl PromptAssembler {
     }
 
     #[must_use]
+    pub fn prompt_specs(&self) -> &IndexMap<String, PromptSpec> {
+        &self.config.prompts
+    }
+
+    #[must_use]
+    pub fn prompt_spec(&self, name: &str) -> Option<&PromptSpec> {
+        self.config.prompts.get(name)
+    }
+
+    #[must_use]
     pub fn has_prompts(&self) -> bool {
         !self.config.prompts.is_empty()
     }
@@ -134,6 +268,11 @@ impl PromptAssembler {
     #[must_use]
     pub fn prompt_kind(&self, name: &str) -> Option<&PromptKind> {
         self.config.prompts.get(name).map(|spec| &spec.kind)
+    }
+
+    #[must_use]
+    pub fn config_warnings(&self) -> &[ConfigIssue] {
+        &self.warnings
     }
 
     /// Assemble a sequence of raw prompt parts by name without placeholder substitution.
@@ -182,101 +321,296 @@ impl PromptAssembler {
     }
 }
 
-fn load_config(root: &Utf8Path) -> Result<Config> {
+struct ConfigLoad {
+    config: Config,
+    warnings: Vec<ConfigIssue>,
+}
+
+fn load_config(root: &Utf8Path) -> std::result::Result<ConfigLoad, LoadConfigError> {
     let mut prompts: IndexMap<String, PromptSpec> = IndexMap::new();
     let mut default_prompt_path: Option<Utf8PathBuf> = Some(root.to_owned());
+    let mut warnings: Vec<ConfigIssue> = Vec::new();
+    let mut errors: Vec<ConfigIssue> = Vec::new();
 
-    // Load primary config
     let main_config = root.join("config.toml");
     if main_config.exists() {
-        let bytes = read_utf8(&main_config)?;
-        merge_config(root, &bytes, &mut prompts, &mut default_prompt_path)?;
+        process_config_file(
+            root,
+            main_config.as_ref(),
+            &mut prompts,
+            &mut default_prompt_path,
+            &mut warnings,
+            &mut errors,
+        )?;
     }
 
-    // Load conf.d entries in lexical order
     let conf_d = root.join("conf.d");
     if conf_d.exists() {
-        let mut entries: Vec<Utf8PathBuf> = fs::read_dir(conf_d.as_std_path())
-            .with_context(|| format!("failed to read {conf_d}"))?
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "toml") {
-                    Some(path)
-                } else {
-                    None
+        let mut entries: Vec<Utf8PathBuf> = Vec::new();
+        let read_dir =
+            fs::read_dir(conf_d.as_std_path()).map_err(|source| LoadConfigError::ReadDir {
+                path: conf_d.clone(),
+                source,
+            })?;
+
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    errors.push(ConfigIssue::new(
+                        ConfigIssueCode::ParseError,
+                        conf_d.clone(),
+                        None,
+                        format!("failed to read entry in {conf_d}: {err}"),
+                    ));
+                    continue;
                 }
-            })
-            .map(|path| {
-                Utf8PathBuf::from_path_buf(path)
-                    .map_err(|_| anyhow!("configuration paths must be valid UTF-8"))
-            })
-            .collect::<Result<_>>()?;
+            };
+
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "toml") {
+                match Utf8PathBuf::from_path_buf(path) {
+                    Ok(path) => entries.push(path),
+                    Err(_) => errors.push(ConfigIssue::new(
+                        ConfigIssueCode::ParseError,
+                        conf_d.clone(),
+                        None,
+                        "configuration paths must be valid UTF-8",
+                    )),
+                }
+            }
+        }
 
         entries.sort();
 
         for entry in entries {
-            let content = read_utf8(&entry)?;
-            merge_config(root, &content, &mut prompts, &mut default_prompt_path)?;
+            process_config_file(
+                root,
+                entry.as_ref(),
+                &mut prompts,
+                &mut default_prompt_path,
+                &mut warnings,
+                &mut errors,
+            )?;
         }
     }
 
-    Ok(Config {
-        root: root.to_owned(),
-        default_prompt_path,
-        prompts,
-    })
+    if errors.is_empty() {
+        Ok(ConfigLoad {
+            config: Config {
+                root: root.to_owned(),
+                default_prompt_path,
+                prompts,
+            },
+            warnings,
+        })
+    } else {
+        Err(LoadConfigError::Invalid {
+            diagnostics: ConfigDiagnostics { errors, warnings },
+        })
+    }
 }
 
-fn merge_config(
+fn process_config_file(
     root: &Utf8Path,
-    raw: &str,
+    path: &Utf8Path,
     prompts: &mut IndexMap<String, PromptSpec>,
     default_prompt_path: &mut Option<Utf8PathBuf>,
-) -> Result<()> {
-    let file: RawFile = toml::from_str(raw)?;
+    warnings: &mut Vec<ConfigIssue>,
+    errors: &mut Vec<ConfigIssue>,
+) -> std::result::Result<(), LoadConfigError> {
+    let content = read_config_file(path)?;
+    let raw: RawFile = match toml::from_str(&content) {
+        Ok(raw) => raw,
+        Err(err) => {
+            let line = None;
+            errors.push(ConfigIssue::new(
+                ConfigIssueCode::ParseError,
+                path.to_owned(),
+                line,
+                err.to_string(),
+            ));
+            return Ok(());
+        }
+    };
 
-    if let Some(path) = file.prompt_path {
-        let resolved = resolve_path(root, &path)?;
-        *default_prompt_path = Some(resolved);
+    if let Some(path_str) = raw.prompt_path {
+        match resolve_path(root, &path_str) {
+            Ok(resolved) => *default_prompt_path = Some(resolved),
+            Err(err) => {
+                errors.push(ConfigIssue::new(
+                    ConfigIssueCode::InvalidPrompt,
+                    path.to_owned(),
+                    None,
+                    format!("invalid prompt_path '{path_str}': {err}"),
+                ));
+                return Ok(());
+            }
+        }
     }
 
-    for (name, prompt) in file.prompt {
-        let prompt_spec = build_prompt_spec(root, prompt)?;
-        prompts.insert(name, prompt_spec);
+    let source = PromptSource {
+        path: path.to_owned(),
+        last_modified: fs::metadata(path.as_std_path())
+            .and_then(|meta| meta.modified())
+            .ok(),
+    };
+
+    for (name, prompt) in raw.prompt {
+        match build_prompt_spec(root, &name, prompt, &source) {
+            Ok(spec) => {
+                if let Some(previous) = prompts.insert(name.clone(), spec) {
+                    warnings.push(ConfigIssue::new(
+                        ConfigIssueCode::Override,
+                        source.path.clone(),
+                        None,
+                        format!(
+                            "prompt '{name}' overrides definition from {}",
+                            previous.metadata.source.path
+                        ),
+                    ));
+                }
+            }
+            Err(issue) => errors.push(issue),
+        }
     }
 
     Ok(())
 }
 
-fn build_prompt_spec(root: &Utf8Path, prompt: RawPrompt) -> Result<PromptSpec> {
-    let prompt_path = match prompt.prompt_path {
-        Some(path) => Some(resolve_path(root, &path)?),
+fn read_config_file(path: &Utf8Path) -> std::result::Result<String, LoadConfigError> {
+    let mut file = fs::File::open(path.as_std_path()).map_err(|source| LoadConfigError::Io {
+        path: path.to_owned(),
+        source,
+    })?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)
+        .map_err(|source| LoadConfigError::Io {
+            path: path.to_owned(),
+            source,
+        })?;
+    Ok(buf)
+}
+
+fn build_prompt_spec(
+    root: &Utf8Path,
+    prompt_name: &str,
+    prompt: RawPrompt,
+    source: &PromptSource,
+) -> std::result::Result<PromptSpec, ConfigIssue> {
+    let prompt_path_override = match prompt.prompt_path {
+        Some(path) => match resolve_path(root, &path) {
+            Ok(resolved) => Some(resolved),
+            Err(err) => {
+                return Err(ConfigIssue::new(
+                    ConfigIssueCode::InvalidPrompt,
+                    source.path.clone(),
+                    None,
+                    format!("prompt '{prompt_name}' has invalid prompt_path '{path}': {err}"),
+                ));
+            }
+        },
         None => None,
     };
 
-    match (prompt.prompts, prompt.template) {
+    let kind = match (prompt.prompts, prompt.template) {
         (Some(files), None) => {
             if files.is_empty() {
-                bail!("prompt sequence cannot be empty");
+                return Err(ConfigIssue::new(
+                    ConfigIssueCode::InvalidPrompt,
+                    source.path.clone(),
+                    None,
+                    "prompt sequence cannot be empty",
+                ));
             }
-            let resolved_files = files.into_iter().map(Utf8PathBuf::from).collect();
-
-            Ok(PromptSpec {
-                prompt_path_override: prompt_path,
-                kind: PromptKind::Sequence {
-                    files: resolved_files,
-                },
-            })
+            PromptKind::Sequence {
+                files: files.into_iter().map(Utf8PathBuf::from).collect(),
+            }
         }
-        (None, Some(template)) => Ok(PromptSpec {
-            prompt_path_override: prompt_path,
-            kind: PromptKind::Template {
-                template: Utf8PathBuf::from(template),
-            },
-        }),
-        (Some(_), Some(_)) => bail!("prompts and template are exclusive options"),
-        (None, None) => bail!("prompt must define either 'prompts' or 'template'"),
+        (None, Some(template)) => PromptKind::Template {
+            template: Utf8PathBuf::from(template),
+        },
+        (Some(_), Some(_)) => {
+            return Err(ConfigIssue::new(
+                ConfigIssueCode::InvalidPrompt,
+                source.path.clone(),
+                None,
+                "prompts and template are exclusive options",
+            ));
+        }
+        (None, None) => {
+            return Err(ConfigIssue::new(
+                ConfigIssueCode::InvalidPrompt,
+                source.path.clone(),
+                None,
+                "prompt must define either 'prompts' or 'template'",
+            ));
+        }
+    };
+
+    let vars = parse_prompt_vars(prompt_name, prompt.vars, source)?;
+
+    let metadata = PromptMetadata {
+        description: prompt.description,
+        tags: prompt.tags,
+        vars,
+        stdin_supported: prompt.stdin_supported,
+        source: source.clone(),
+    };
+
+    Ok(PromptSpec {
+        prompt_path_override,
+        kind,
+        metadata,
+    })
+}
+
+fn parse_prompt_vars(
+    prompt_name: &str,
+    vars: Vec<RawPromptVar>,
+    source: &PromptSource,
+) -> std::result::Result<Vec<PromptVariable>, ConfigIssue> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut parsed: Vec<PromptVariable> = Vec::with_capacity(vars.len());
+
+    for raw in vars {
+        if !seen.insert(raw.name.clone()) {
+            return Err(ConfigIssue::new(
+                ConfigIssueCode::DuplicateVar,
+                source.path.clone(),
+                None,
+                format!("var '{}' declared twice", raw.name),
+            ));
+        }
+
+        let raw_kind = raw.kind.unwrap_or_else(|| "string".to_owned());
+        let kind = parse_var_kind(&raw_kind).ok_or_else(|| {
+            ConfigIssue::new(
+                ConfigIssueCode::InvalidPrompt,
+                source.path.clone(),
+                None,
+                format!("unknown var type '{raw_kind}' for prompt '{prompt_name}'"),
+            )
+        })?;
+
+        parsed.push(PromptVariable {
+            name: raw.name,
+            required: raw.required,
+            kind,
+            description: raw.description,
+        });
+    }
+
+    Ok(parsed)
+}
+
+fn parse_var_kind(raw: &str) -> Option<PromptVariableKind> {
+    match raw {
+        "string" => Some(PromptVariableKind::String),
+        "path" => Some(PromptVariableKind::Path),
+        "number" => Some(PromptVariableKind::Number),
+        "boolean" => Some(PromptVariableKind::Boolean),
+        _ => None,
     }
 }
 
@@ -449,4 +783,26 @@ struct RawPrompt {
     prompts: Option<Vec<String>>,
     #[serde(default)]
     template: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    vars: Vec<RawPromptVar>,
+    #[serde(default)]
+    #[serde(rename = "stdin")]
+    stdin_supported: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPromptVar {
+    name: String,
+    #[serde(default)]
+    required: bool,
+    #[serde(default)]
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
 }

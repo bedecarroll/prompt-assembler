@@ -1,11 +1,20 @@
 use std::io::{self, Write};
+use std::process;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use directories::BaseDirs;
-use prompt_assembler::{PromptAssembler, PromptKind, StructuredData};
+use prompt_assembler::{
+    ConfigIssue, LoadConfigError, PromptAssembler, PromptKind, PromptSpec, PromptVariable,
+    StructuredData,
+};
+use serde::Serialize;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+const SCHEMA_VERSION: u8 = 1;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -25,10 +34,34 @@ struct Cli {
     prompt_args: Vec<String>,
 }
 
+#[derive(Args, Debug, Clone)]
+struct ListArgs {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+struct ShowArgs {
+    #[arg(value_name = "PROMPT")]
+    name: String,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+struct ValidateArgs {
+    #[arg(long)]
+    json: bool,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// List available prompts
-    List,
+    List(ListArgs),
+    /// Show prompt metadata
+    Show(ShowArgs),
+    /// Validate configuration files
+    Validate(ValidateArgs),
     /// Generate shell completions
     Completions { shell: String },
     /// Concatenate raw prompt parts without placeholder substitution
@@ -39,31 +72,39 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let Cli {
+        command,
+        prompt,
+        prompt_args,
+    } = Cli::parse();
 
     let config_dir = discover_config_dir()?;
-    let assembler = PromptAssembler::from_directory(config_dir.as_ref())
-        .with_context(|| format!("failed to load configuration from {config_dir}"))?;
 
-    match cli.command {
-        Some(Commands::List) => {
-            ensure_prompts_available(&assembler)?;
-            list_prompts(&assembler);
+    match command {
+        Some(Commands::List(args)) => {
+            handle_list(config_dir.as_ref(), &args)?;
+        }
+        Some(Commands::Show(args)) => {
+            handle_show(config_dir.as_ref(), &args)?;
+        }
+        Some(Commands::Validate(args)) => {
+            handle_validate(config_dir.as_ref(), &args)?;
         }
         Some(Commands::Completions { shell }) => {
+            let assembler = load_runtime_assembler(config_dir.as_ref())?;
             ensure_prompts_available(&assembler)?;
             let shell = parse_shell(&shell)?;
             generate_completions(shell, &assembler)?;
         }
         Some(Commands::Parts { files }) => {
+            let assembler = load_runtime_assembler(config_dir.as_ref())?;
             run_parts(&assembler, &files)?;
         }
         None => {
+            let assembler = load_runtime_assembler(config_dir.as_ref())?;
             ensure_prompts_available(&assembler)?;
-            let prompt = cli
-                .prompt
-                .ok_or_else(|| anyhow!("prompt name is required"))?;
-            run_prompt(&assembler, &prompt, cli.prompt_args)?;
+            let prompt = prompt.ok_or_else(|| anyhow!("prompt name is required"))?;
+            run_prompt(&assembler, &prompt, prompt_args)?;
         }
     }
 
@@ -120,6 +161,11 @@ fn run_parts(assembler: &PromptAssembler, files: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn load_runtime_assembler(config_dir: &Utf8Path) -> Result<PromptAssembler> {
+    PromptAssembler::from_directory(config_dir)
+        .with_context(|| format!("failed to load configuration from {config_dir}"))
+}
+
 fn ensure_prompts_available(assembler: &PromptAssembler) -> Result<()> {
     if assembler.has_prompts() {
         Ok(())
@@ -132,6 +178,80 @@ fn list_prompts(assembler: &PromptAssembler) {
     for name in assembler.available_prompts().keys() {
         println!("{name}");
     }
+}
+
+fn handle_list(config_dir: &Utf8Path, args: &ListArgs) -> Result<()> {
+    match PromptAssembler::load_with_diagnostics(config_dir) {
+        Ok(assembler) => {
+            if args.json {
+                print_list_json(&assembler)?;
+            } else {
+                ensure_prompts_available(&assembler)?;
+                list_prompts(&assembler);
+            }
+        }
+        Err(LoadConfigError::Invalid { diagnostics }) => {
+            emit_human_diagnostics("error", &diagnostics.errors);
+            emit_human_diagnostics("warning", &diagnostics.warnings);
+            process::exit(2);
+        }
+        Err(other) => exit_with_load_error(other),
+    }
+
+    Ok(())
+}
+
+fn handle_show(config_dir: &Utf8Path, args: &ShowArgs) -> Result<()> {
+    match PromptAssembler::load_with_diagnostics(config_dir) {
+        Ok(assembler) => {
+            let Some(spec) = assembler.prompt_spec(&args.name) else {
+                eprintln!("error: unknown prompt '{}'", args.name);
+                process::exit(1);
+            };
+
+            if args.json {
+                print_prompt_json(&args.name, spec)?;
+            } else {
+                print_prompt_human(&args.name, spec);
+            }
+        }
+        Err(LoadConfigError::Invalid { diagnostics }) => {
+            emit_human_diagnostics("error", &diagnostics.errors);
+            emit_human_diagnostics("warning", &diagnostics.warnings);
+            process::exit(2);
+        }
+        Err(other) => exit_with_load_error(other),
+    }
+
+    Ok(())
+}
+
+fn handle_validate(config_dir: &Utf8Path, args: &ValidateArgs) -> Result<()> {
+    match PromptAssembler::load_with_diagnostics(config_dir) {
+        Ok(assembler) => {
+            let warnings: Vec<ConfigIssue> = assembler.config_warnings().to_vec();
+            if args.json {
+                print_validate_json(&[], &warnings)?;
+            } else {
+                if !warnings.is_empty() {
+                    emit_human_diagnostics("warning", &warnings);
+                }
+                println!("configuration is valid");
+            }
+        }
+        Err(LoadConfigError::Invalid { diagnostics }) => {
+            if args.json {
+                print_validate_json(&diagnostics.errors, &diagnostics.warnings)?;
+            } else {
+                emit_human_diagnostics("error", &diagnostics.errors);
+                emit_human_diagnostics("warning", &diagnostics.warnings);
+            }
+            process::exit(2);
+        }
+        Err(other) => exit_with_load_error(other),
+    }
+
+    Ok(())
 }
 
 fn generate_completions(shell: Shell, assembler: &PromptAssembler) -> Result<()> {
@@ -160,6 +280,222 @@ fn generate_completions(shell: Shell, assembler: &PromptAssembler) -> Result<()>
     }
 
     Ok(())
+}
+
+fn print_list_json(assembler: &PromptAssembler) -> Result<()> {
+    let prompts: Vec<JsonPrompt> = assembler
+        .prompt_specs()
+        .iter()
+        .map(|(name, spec)| prompt_to_json(name, spec))
+        .collect();
+
+    let payload = ListEnvelope {
+        schema_version: SCHEMA_VERSION,
+        generated_at: current_timestamp(),
+        prompts,
+    };
+
+    let rendered = serde_json::to_string_pretty(&payload)?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn print_prompt_json(name: &str, spec: &PromptSpec) -> Result<()> {
+    let payload = prompt_to_json(name, spec);
+    let rendered = serde_json::to_string_pretty(&payload)?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn print_prompt_human(name: &str, spec: &PromptSpec) {
+    println!("name: {name}");
+
+    match spec.kind {
+        PromptKind::Sequence { .. } => println!("kind: sequence"),
+        PromptKind::Template { .. } => println!("kind: template"),
+    }
+
+    if let Some(description) = &spec.metadata.description {
+        println!("description: {description}");
+    }
+
+    if !spec.metadata.tags.is_empty() {
+        println!("tags: {}", spec.metadata.tags.join(", "));
+    }
+
+    println!(
+        "stdin supported: {}",
+        if effective_stdin_supported(spec) {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+
+    if let Some(last_modified) = format_system_time(spec.metadata.source.last_modified) {
+        println!("last modified: {last_modified}");
+    }
+
+    println!("source: {}", spec.metadata.source.path);
+
+    if !spec.metadata.vars.is_empty() {
+        println!("vars:");
+        for var in &spec.metadata.vars {
+            let mut details = format!("  - {} ({})", var.name, var.kind.as_str());
+            if var.required {
+                details.push_str(" [required]");
+            }
+            if let Some(description) = &var.description {
+                details.push_str(" — ");
+                details.push_str(description);
+            }
+            println!("{details}");
+        }
+    }
+}
+
+fn print_validate_json(errors: &[ConfigIssue], warnings: &[ConfigIssue]) -> Result<()> {
+    let payload = ValidateEnvelope {
+        schema_version: SCHEMA_VERSION,
+        generated_at: current_timestamp(),
+        errors: errors.iter().map(JsonDiagnostic::from).collect(),
+        warnings: warnings.iter().map(JsonDiagnostic::from).collect(),
+    };
+
+    let rendered = serde_json::to_string_pretty(&payload)?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn prompt_to_json(name: &str, spec: &PromptSpec) -> JsonPrompt {
+    JsonPrompt {
+        name: name.to_string(),
+        description: spec.metadata.description.clone(),
+        tags: spec.metadata.tags.clone(),
+        vars: convert_vars(&spec.metadata.vars),
+        stdin_supported: effective_stdin_supported(spec),
+        last_modified: format_system_time(spec.metadata.source.last_modified),
+        source_path: spec.metadata.source.path.as_str().to_owned(),
+    }
+}
+
+fn convert_vars(vars: &[PromptVariable]) -> Vec<JsonPromptVar> {
+    vars.iter()
+        .map(|var| JsonPromptVar {
+            name: var.name.clone(),
+            required: var.required,
+            kind: var.kind.as_str().to_owned(),
+            description: var.description.clone(),
+        })
+        .collect()
+}
+
+fn emit_human_diagnostics(level: &str, issues: &[ConfigIssue]) {
+    for issue in issues {
+        let detail = format_issue(issue);
+        eprintln!("{level}: {detail} ({})", issue.code.as_str());
+    }
+}
+
+fn format_issue(issue: &ConfigIssue) -> String {
+    match issue.line {
+        Some(line) => format!("{}:{}: {}", issue.path, line, issue.message),
+        None => format!("{}: {}", issue.path, issue.message),
+    }
+}
+
+fn exit_with_load_error(err: LoadConfigError) -> ! {
+    match err {
+        LoadConfigError::Io { path, source } => {
+            eprintln!("error: failed to read {path}: {source}");
+            process::exit(127);
+        }
+        LoadConfigError::ReadDir { path, source } => {
+            eprintln!("error: failed to enumerate {path}: {source}");
+            process::exit(127);
+        }
+        LoadConfigError::Invalid { diagnostics } => {
+            emit_human_diagnostics("error", &diagnostics.errors);
+            emit_human_diagnostics("warning", &diagnostics.warnings);
+            process::exit(2);
+        }
+    }
+}
+
+fn effective_stdin_supported(spec: &PromptSpec) -> bool {
+    spec.metadata
+        .stdin_supported
+        .unwrap_or(matches!(spec.kind, PromptKind::Sequence { .. }))
+}
+
+fn current_timestamp() -> String {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
+}
+
+fn format_system_time(value: Option<SystemTime>) -> Option<String> {
+    value.and_then(|time| OffsetDateTime::from(time).format(&Rfc3339).ok())
+}
+
+#[derive(Serialize)]
+struct ListEnvelope {
+    schema_version: u8,
+    generated_at: String,
+    prompts: Vec<JsonPrompt>,
+}
+
+#[derive(Serialize)]
+struct JsonPrompt {
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    vars: Vec<JsonPromptVar>,
+    stdin_supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_modified: Option<String>,
+    source_path: String,
+}
+
+#[derive(Serialize)]
+struct JsonPromptVar {
+    name: String,
+    required: bool,
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ValidateEnvelope {
+    schema_version: u8,
+    generated_at: String,
+    errors: Vec<JsonDiagnostic>,
+    warnings: Vec<JsonDiagnostic>,
+}
+
+#[derive(Serialize)]
+struct JsonDiagnostic {
+    file: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+    code: String,
+    message: String,
+}
+
+impl From<&ConfigIssue> for JsonDiagnostic {
+    fn from(issue: &ConfigIssue) -> Self {
+        Self {
+            file: issue.path.as_str().to_owned(),
+            line: issue.line,
+            code: issue.code.as_str().to_owned(),
+            message: issue.message.clone(),
+        }
+    }
 }
 
 fn parse_data_argument(raw: &str) -> Result<StructuredData> {

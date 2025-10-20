@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 
 use camino::Utf8Path;
-use prompt_assembler::{PromptAssembler, StructuredData};
+use prompt_assembler::{LoadConfigError, PromptAssembler, StructuredData};
 use tempfile::TempDir;
 
 fn utf8_path(path: &std::path::Path) -> &Utf8Path {
@@ -311,7 +311,18 @@ fn config_errors_when_prompt_defines_sequence_and_template() {
     );
 
     let err = PromptAssembler::from_directory(root).expect_err("config should fail");
-    assert!(format!("{err}").contains("exclusive"));
+    let load_err = err.downcast::<LoadConfigError>().expect("load error");
+    match load_err {
+        LoadConfigError::Invalid { diagnostics } => {
+            assert!(
+                diagnostics
+                    .errors
+                    .iter()
+                    .any(|issue| issue.message.contains("exclusive"))
+            );
+        }
+        other => panic!("unexpected error: {other}"),
+    }
 }
 
 #[test]
@@ -330,7 +341,18 @@ fn config_errors_when_prompt_sequence_is_empty() {
     );
 
     let err = PromptAssembler::from_directory(root).expect_err("config should fail");
-    assert!(format!("{err}").contains("empty"));
+    let load_err = err.downcast::<LoadConfigError>().expect("load error");
+    match load_err {
+        LoadConfigError::Invalid { diagnostics } => {
+            assert!(
+                diagnostics
+                    .errors
+                    .iter()
+                    .any(|issue| issue.message.contains("prompt sequence cannot be empty"))
+            );
+        }
+        other => panic!("unexpected error: {other}"),
+    }
 }
 
 #[test]
@@ -392,7 +414,18 @@ fn config_errors_on_unknown_prompt_key() {
     );
 
     let err = PromptAssembler::from_directory(root).expect_err("unknown key should fail");
-    assert!(format!("{err}").contains("unexpected"));
+    let load_err = err.downcast::<LoadConfigError>().expect("load error");
+    match load_err {
+        LoadConfigError::Invalid { diagnostics } => {
+            assert!(
+                diagnostics
+                    .errors
+                    .iter()
+                    .any(|issue| issue.message.contains("unexpected"))
+            );
+        }
+        other => panic!("unexpected error: {other}"),
+    }
 }
 
 #[test]

@@ -4,6 +4,7 @@ use std::io::Write;
 use assert_cmd::Command;
 use camino::{Utf8Path, Utf8PathBuf};
 use predicates::prelude::*;
+use serde_json::Value;
 use tempfile::TempDir;
 
 fn utf8_path(path: &std::path::Path) -> &Utf8Path {
@@ -389,4 +390,224 @@ fn cli_uses_conf_d_override() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Override yes"));
+}
+
+#[test]
+fn list_json_includes_metadata() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    let conf_d = library_dir.join("conf.d");
+    fs::create_dir_all(conf_d.as_std_path()).unwrap();
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+[prompt.alpha]
+description = "Alpha prompt"
+tags = ["alpha", "test"]
+vars = [{ name = "input", required = true, type = "path", description = "Input file" }]
+stdin = true
+prompts = ["alpha.md"]
+
+[prompt.beta]
+prompts = ["beta.md"]
+"#,
+    )
+    .unwrap();
+    fs::write(
+        conf_d.join("20-beta.toml").as_std_path(),
+        r#"
+[prompt.beta]
+description = "Beta override"
+prompts = ["beta.md"]
+"#,
+    )
+    .unwrap();
+
+    write_file(&library_dir, "alpha.md", "Alpha\n");
+    write_file(&library_dir, "beta.md", "Beta\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["list", "--json"]);
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(json["schema_version"], Value::from(1));
+    let prompts = json["prompts"].as_array().unwrap();
+    assert_eq!(prompts.len(), 2);
+
+    let alpha = prompts
+        .iter()
+        .find(|entry| entry["name"] == "alpha")
+        .expect("alpha prompt present");
+    assert_eq!(alpha["description"], Value::from("Alpha prompt"));
+    assert_eq!(alpha["vars"][0]["name"], Value::from("input"));
+    assert_eq!(alpha["vars"][0]["type"], Value::from("path"));
+    assert!(alpha["stdin_supported"].as_bool().unwrap());
+    assert!(alpha["last_modified"].as_str().is_some());
+    assert!(
+        alpha["source_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("config.toml")
+    );
+
+    let beta = prompts
+        .iter()
+        .find(|entry| entry["name"] == "beta")
+        .expect("beta prompt present");
+    assert_eq!(beta["description"], Value::from("Beta override"));
+    assert!(
+        beta["source_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("20-beta.toml")
+    );
+}
+
+#[test]
+fn show_json_returns_prompt() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+[prompt.echo]
+description = "Echo prompt"
+stdin = false
+prompts = ["echo.md"]
+"#,
+    )
+    .unwrap();
+    write_file(&library_dir, "echo.md", "Echo\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["show", "echo", "--json"]);
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(json["name"], Value::from("echo"));
+    assert_eq!(json["description"], Value::from("Echo prompt"));
+    assert!(!json["stdin_supported"].as_bool().unwrap());
+    assert!(
+        json["source_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("config.toml")
+    );
+}
+
+#[test]
+fn show_json_missing_prompt_exits_one() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        "[prompt.alpha]\nprompts = [\"alpha.md\"]\n",
+    )
+    .unwrap();
+    write_file(&library_dir, "alpha.md", "Alpha\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["show", "missing", "--json"]);
+
+    cmd.assert()
+        .failure()
+        .code(predicate::eq(1))
+        .stderr(predicate::str::contains("unknown prompt"));
+}
+
+#[test]
+fn validate_success_reports_clean_state() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        "[prompt.alpha]\nprompts = [\"alpha.md\"]\n",
+    )
+    .unwrap();
+    write_file(&library_dir, "alpha.md", "Alpha\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.arg("validate");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("configuration is valid"));
+
+    let mut json_cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    json_cmd.args(["validate", "--json"]);
+
+    let assert = json_cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(json["errors"].as_array().unwrap().len(), 0);
+    assert_eq!(json["warnings"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn validate_failure_emits_errors_and_warnings() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    let conf_d = library_dir.join("conf.d");
+    fs::create_dir_all(conf_d.as_std_path()).unwrap();
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+[prompt.problem]
+prompts = ["problem.md"]
+vars = [
+  { name = "seed", required = true },
+  { name = "seed", required = false }
+]
+
+[prompt.override]
+prompts = ["one.md"]
+"#,
+    )
+    .unwrap();
+    fs::write(
+        conf_d.join("40-override.toml").as_std_path(),
+        "[prompt.override]\nprompts = [\"two.md\"]\n",
+    )
+    .unwrap();
+
+    write_file(&library_dir, "problem.md", "Problem\n");
+    write_file(&library_dir, "one.md", "One\n");
+    write_file(&library_dir, "two.md", "Two\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.arg("validate");
+
+    cmd.assert()
+        .failure()
+        .code(predicate::eq(2))
+        .stderr(predicate::str::contains("duplicate"))
+        .stderr(predicate::str::contains("override"));
+
+    let mut json_cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    json_cmd.args(["validate", "--json"]);
+
+    let assert = json_cmd.assert().failure().code(predicate::eq(2));
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+
+    let errors = json["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0]["code"], Value::from("duplicate_var"));
+
+    let warnings = json["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0]["code"], Value::from("override"));
 }

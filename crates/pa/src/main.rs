@@ -294,10 +294,11 @@ fn handle_self_update(args: &SelfUpdateArgs) -> Result<()> {
         builder.target_version_tag(&normalized);
     }
 
-    if let Ok(token) = std::env::var("PA_GITHUB_TOKEN") {
-        if !token.trim().is_empty() {
-            builder.auth_token(token.trim());
-        }
+    if let Ok(token) = std::env::var("PA_GITHUB_TOKEN")
+        && let token = token.trim()
+        && !token.is_empty()
+    {
+        builder.auth_token(token);
     }
 
     let status = builder

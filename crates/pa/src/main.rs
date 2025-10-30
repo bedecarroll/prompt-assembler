@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{self, Write};
 use std::process;
 use std::time::SystemTime;
@@ -15,6 +16,7 @@ use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 const SCHEMA_VERSION: u8 = 1;
+const DEFAULT_CONFIG: &[u8] = include_bytes!("../../../assets/default_config.toml");
 
 #[derive(Parser, Debug)]
 #[command(
@@ -79,6 +81,7 @@ fn main() -> Result<()> {
     } = Cli::parse();
 
     let config_dir = discover_config_dir()?;
+    ensure_config_initialized(config_dir.as_ref())?;
 
     match command {
         Some(Commands::List(args)) => {
@@ -520,6 +523,19 @@ fn discover_config_dir() -> Result<Utf8PathBuf> {
         BaseDirs::new().ok_or_else(|| anyhow!("unable to locate XDG config directory"))?;
     let path = base_dirs.config_dir().join("prompt-assembler");
     Utf8PathBuf::from_path_buf(path).map_err(|_| anyhow!("config path is not valid UTF-8"))
+}
+
+fn ensure_config_initialized(config_dir: &Utf8Path) -> Result<()> {
+    fs::create_dir_all(config_dir.as_std_path())
+        .with_context(|| format!("failed to create config directory {config_dir}"))?;
+
+    let config_path = config_dir.join("config.toml");
+    if !config_path.exists() {
+        fs::write(config_path.as_std_path(), DEFAULT_CONFIG)
+            .with_context(|| format!("failed to write default config at {config_path}"))?;
+    }
+
+    Ok(())
 }
 
 fn looks_like_data_file(value: &str) -> bool {

@@ -37,6 +37,34 @@ fn command_with_xdg(temp: &TempDir, xdg_config_home: &Utf8Path) -> Command {
 }
 
 #[test]
+fn first_run_creates_default_config() {
+    let temp = TempDir::new().unwrap();
+    let root = utf8_path(temp.path());
+    let xdg_config_home = root.join("xdg-config");
+    let library_dir = xdg_config_home.join("prompt-assembler");
+
+    let mut cmd = Command::cargo_bin("pa").unwrap();
+    cmd.env("XDG_CONFIG_HOME", xdg_config_home.as_str());
+    cmd.current_dir(temp.path());
+    cmd.args(["validate", "--json"]);
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["errors"].as_array().unwrap().len(), 0);
+    assert_eq!(json["warnings"].as_array().unwrap().len(), 0);
+
+    assert!(library_dir.exists(), "library directory should be created");
+    let config_path = library_dir.join("config.toml");
+    assert!(
+        config_path.exists(),
+        "config.toml should be created on first run"
+    );
+    let contents = fs::read_to_string(config_path.as_std_path()).unwrap();
+    assert!(contents.trim().is_empty(), "default config should be empty");
+}
+
+#[test]
 fn prints_sequence_prompt_output() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

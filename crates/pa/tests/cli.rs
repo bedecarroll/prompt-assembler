@@ -201,6 +201,19 @@ fn list_command_prints_available_prompts() {
 }
 
 #[test]
+fn self_update_help_is_available() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, _) = prepare_config(&temp);
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["self-update", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage: pa self-update"))
+        .stdout(predicate::str::contains("--version <TAG>"));
+}
+
+#[test]
 fn completions_include_prompt_names() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

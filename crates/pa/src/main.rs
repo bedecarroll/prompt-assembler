@@ -56,6 +56,12 @@ struct ValidateArgs {
     json: bool,
 }
 
+#[derive(Args, Debug, Clone)]
+struct SelfUpdateArgs {
+    #[arg(long, value_name = "TAG")]
+    version: Option<String>,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// List available prompts
@@ -64,6 +70,8 @@ enum Commands {
     Show(ShowArgs),
     /// Validate configuration files
     Validate(ValidateArgs),
+    /// Update pa to the latest released version
+    SelfUpdate(SelfUpdateArgs),
     /// Generate shell completions
     Completions { shell: String },
     /// Concatenate raw prompt parts without placeholder substitution
@@ -92,6 +100,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Validate(args)) => {
             handle_validate(config_dir.as_ref(), &args)?;
+        }
+        Some(Commands::SelfUpdate(args)) => {
+            handle_self_update(&args)?;
         }
         Some(Commands::Completions { shell }) => {
             let assembler = load_runtime_assembler(config_dir.as_ref())?;
@@ -254,6 +265,51 @@ fn handle_validate(config_dir: &Utf8Path, args: &ValidateArgs) -> Result<()> {
             process::exit(2);
         }
         Err(other) => exit_with_load_error(other),
+    }
+
+    Ok(())
+}
+
+fn handle_self_update(args: &SelfUpdateArgs) -> Result<()> {
+    use self_update::backends::github::Update;
+
+    const REPO_OWNER: &str = "bedecarroll";
+    const REPO_NAME: &str = "prompt-assembler";
+    const BIN_NAME: &str = "pa";
+
+    let mut builder = Update::configure();
+    builder
+        .repo_owner(REPO_OWNER)
+        .repo_name(REPO_NAME)
+        .bin_name(BIN_NAME)
+        .current_version(env!("CARGO_PKG_VERSION"))
+        .show_download_progress(true);
+
+    if let Some(version) = args.version.as_ref() {
+        let normalized = if version.starts_with('v') {
+            version.clone()
+        } else {
+            format!("v{version}")
+        };
+        builder.target_version_tag(&normalized);
+    }
+
+    if let Ok(token) = std::env::var("PA_GITHUB_TOKEN") {
+        if !token.trim().is_empty() {
+            builder.auth_token(token.trim());
+        }
+    }
+
+    let status = builder
+        .build()
+        .context("failed to configure self-updater")?
+        .update()
+        .context("failed to apply update")?;
+
+    if status.updated() {
+        println!("Updated pa to {}", status.version());
+    } else {
+        println!("pa is already up to date ({})", status.version());
     }
 
     Ok(())

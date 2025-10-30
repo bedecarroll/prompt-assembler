@@ -15,6 +15,7 @@ Create your own library of snippets to assemble prompts.
   - [Jinja templates](#jinja-template)
   - [JSON API](#json-api)
   - [Shell completions](#shell-completions)
+  - [Self-update](#self-update)
 - [Development](#development)
 - [Releasing](#releasing)
 - [License](#license)
@@ -37,6 +38,7 @@ Create your own library of snippets to assemble prompts.
   - Allows you to create parameterized templates
 - Template data files support JSON or TOML formats (auto-detected by extension)
 - Shell completions include your prompts
+- Built-in `pa self-update` command fetches the latest GitHub release
 - Prints your completed prompts on stdout
 
 ## Installation
@@ -58,7 +60,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt
 ### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler --version 0.3.0
+cargo install prompt-assembler --version 0.4.0
 ```
 
 > **Note**  
@@ -211,6 +213,17 @@ $ source ~/.local/share/bash-completion/pa
 ```
 
 `pa` inspects your configuration at generation time, so completions stay in sync with your prompt names. Regenerate the script after adding or removing prompts.
+
+### Self-update
+
+Keep `pa` current without reinstalling:
+
+```bash
+$ pa self-update
+$ pa self-update --version v0.4.0
+```
+
+The command downloads the requested release from GitHub, swaps in the new binary, and reports whether an update was applied. When running in CI or other tight loops, set `PA_GITHUB_TOKEN` to avoid GitHub rate limits.
 
 ## Flags
 

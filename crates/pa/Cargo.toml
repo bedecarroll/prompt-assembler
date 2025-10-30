@@ -1,6 +1,6 @@
 [package]
 name = "pa"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 repository = "https://github.com/bedecarroll/prompt-assembler"
 
@@ -19,6 +19,13 @@ atty.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
+self_update = { version = "0.42", default-features = false, features = [
+    "archive-tar",
+    "archive-zip",
+    "compression-flate2",
+    "compression-zip-deflate",
+    "rustls",
+] }
 
 [dev-dependencies]
 assert_cmd.workspace = true

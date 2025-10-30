@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.0 - 2025-10-30
+
+- add a built-in `pa self-update` command powered by GitHub releases, replacing the need for a separate updater binary
+- document the update workflow and point automated environments at the `PA_GITHUB_TOKEN` escape hatch
+
 ## 0.3.0 - 2025-10-30
 
 - add prompt profile details to `pa show --json`, including each fragment and the combined content

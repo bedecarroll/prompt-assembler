@@ -9,8 +9,8 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use directories::BaseDirs;
 use prompt_assembler::{
-    ConfigIssue, LoadConfigError, PromptAssembler, PromptKind, PromptSpec, PromptVariable,
-    StructuredData,
+    ConfigIssue, LoadConfigError, PromptAssembler, PromptKind, PromptPart, PromptProfile,
+    PromptSpec, PromptVariable, StructuredData,
 };
 use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -213,7 +213,9 @@ fn handle_show(config_dir: &Utf8Path, args: &ShowArgs) -> Result<()> {
             };
 
             if args.json {
-                print_prompt_json(&args.name, spec)?;
+                let profile = assembler.prompt_profile(&args.name)?;
+                let profile = Some(profile_to_json(profile));
+                print_prompt_json(&args.name, spec, profile)?;
             } else {
                 print_prompt_human(&args.name, spec);
             }
@@ -289,7 +291,7 @@ fn print_list_json(assembler: &PromptAssembler) -> Result<()> {
     let prompts: Vec<JsonPrompt> = assembler
         .prompt_specs()
         .iter()
-        .map(|(name, spec)| prompt_to_json(name, spec))
+        .map(|(name, spec)| prompt_to_json(name, spec, None))
         .collect();
 
     let payload = ListEnvelope {
@@ -303,8 +305,12 @@ fn print_list_json(assembler: &PromptAssembler) -> Result<()> {
     Ok(())
 }
 
-fn print_prompt_json(name: &str, spec: &PromptSpec) -> Result<()> {
-    let payload = prompt_to_json(name, spec);
+fn print_prompt_json(
+    name: &str,
+    spec: &PromptSpec,
+    profile: Option<JsonPromptProfile>,
+) -> Result<()> {
+    let payload = prompt_to_json(name, spec, profile);
     let rendered = serde_json::to_string_pretty(&payload)?;
     println!("{rendered}");
     Ok(())
@@ -370,7 +376,7 @@ fn print_validate_json(errors: &[ConfigIssue], warnings: &[ConfigIssue]) -> Resu
     Ok(())
 }
 
-fn prompt_to_json(name: &str, spec: &PromptSpec) -> JsonPrompt {
+fn prompt_to_json(name: &str, spec: &PromptSpec, profile: Option<JsonPromptProfile>) -> JsonPrompt {
     JsonPrompt {
         name: name.to_string(),
         description: spec.metadata.description.clone(),
@@ -379,6 +385,7 @@ fn prompt_to_json(name: &str, spec: &PromptSpec) -> JsonPrompt {
         stdin_supported: effective_stdin_supported(spec),
         last_modified: format_system_time(spec.metadata.source.last_modified),
         source_path: spec.metadata.source.path.as_str().to_owned(),
+        profile,
     }
 }
 
@@ -391,6 +398,36 @@ fn convert_vars(vars: &[PromptVariable]) -> Vec<JsonPromptVar> {
             description: var.description.clone(),
         })
         .collect()
+}
+
+fn profile_to_json(profile: PromptProfile) -> JsonPromptProfile {
+    match profile {
+        PromptProfile::Sequence { parts, combined } => JsonPromptProfile {
+            kind: "sequence".to_string(),
+            parts: parts.into_iter().map(JsonPromptPart::from).collect(),
+            template: None,
+            content: combined,
+        },
+        PromptProfile::Template { template } => {
+            let part = JsonPromptPart::from(template);
+            let content = part.content.clone();
+            JsonPromptProfile {
+                kind: "template".to_string(),
+                parts: Vec::new(),
+                template: Some(part),
+                content,
+            }
+        }
+    }
+}
+
+impl From<PromptPart> for JsonPromptPart {
+    fn from(part: PromptPart) -> Self {
+        Self {
+            path: part.path.into_string(),
+            content: part.content,
+        }
+    }
 }
 
 fn emit_human_diagnostics(level: &str, issues: &[ConfigIssue]) {
@@ -461,6 +498,24 @@ struct JsonPrompt {
     #[serde(skip_serializing_if = "Option::is_none")]
     last_modified: Option<String>,
     source_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<JsonPromptProfile>,
+}
+
+#[derive(Serialize)]
+struct JsonPromptProfile {
+    kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    parts: Vec<JsonPromptPart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    template: Option<JsonPromptPart>,
+    content: String,
+}
+
+#[derive(Serialize, Clone)]
+struct JsonPromptPart {
+    path: String,
+    content: String,
 }
 
 #[derive(Serialize)]

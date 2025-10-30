@@ -34,6 +34,33 @@ pub enum PromptKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct PromptPart {
+    pub path: Utf8PathBuf,
+    pub content: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum PromptProfile {
+    Sequence {
+        parts: Vec<PromptPart>,
+        combined: String,
+    },
+    Template {
+        template: PromptPart,
+    },
+}
+
+impl PromptProfile {
+    #[must_use]
+    pub fn combined_content(&self) -> &str {
+        match self {
+            PromptProfile::Sequence { combined, .. } => combined,
+            PromptProfile::Template { template } => &template.content,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PromptMetadata {
     pub description: Option<String>,
     pub tags: Vec<String>,
@@ -271,6 +298,59 @@ impl PromptAssembler {
     #[must_use]
     pub fn prompt_kind(&self, name: &str) -> Option<&PromptKind> {
         self.config.prompts.get(name).map(|spec| &spec.kind)
+    }
+
+    /// Retrieve prompt parts without performing placeholder substitution.
+    ///
+    /// # Errors
+    /// Returns an error when the prompt is unknown or referenced files cannot be read.
+    pub fn prompt_profile(&self, name: &str) -> Result<PromptProfile> {
+        let spec = self
+            .config
+            .prompts
+            .get(name)
+            .ok_or_else(|| anyhow!("unknown prompt: {name}"))?;
+
+        let base = self
+            .resolve_prompt_path(spec)
+            .context("prompt missing prompt_path")?;
+
+        match &spec.kind {
+            PromptKind::Sequence { files } => {
+                let mut parts: Vec<PromptPart> = Vec::new();
+                let mut combined = String::new();
+
+                for file in files {
+                    let full_path = base.join(file);
+                    let raw = read_utf8(full_path.as_ref()).with_context(|| {
+                        format!("failed to read fragment '{file}' for prompt '{name}'")
+                    })?;
+                    combined.push_str(&raw);
+                    if !combined.ends_with('\n') {
+                        combined.push('\n');
+                    }
+                    parts.push(PromptPart {
+                        path: full_path,
+                        content: raw,
+                    });
+                }
+
+                Ok(PromptProfile::Sequence { parts, combined })
+            }
+            PromptKind::Template { template } => {
+                let full_path = base.join(template);
+                let raw = read_utf8(full_path.as_ref()).with_context(|| {
+                    format!("failed to read template '{template}' for prompt '{name}'")
+                })?;
+
+                Ok(PromptProfile::Template {
+                    template: PromptPart {
+                        path: full_path,
+                        content: raw,
+                    },
+                })
+            }
+        }
     }
 
     #[must_use]

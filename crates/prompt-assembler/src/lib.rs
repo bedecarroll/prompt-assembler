@@ -218,6 +218,9 @@ impl PromptAssembler {
                     })?;
                     let substituted = substitute_placeholders(&content, args)?;
                     rendered.push_str(&substituted);
+                    if !rendered.ends_with('\n') {
+                        rendered.push('\n');
+                    }
                 }
                 Ok(rendered)
             }

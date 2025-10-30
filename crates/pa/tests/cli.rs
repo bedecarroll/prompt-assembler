@@ -87,6 +87,29 @@ prompts = ["body.md"]
 }
 
 #[test]
+fn sequence_prompts_insert_newlines_between_fragments() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"[prompt.combo]
+prompts = ["first.md", "second.md"]
+"#,
+    )
+    .unwrap();
+    write_file(&library_dir, "first.md", "First fragment without newline");
+    write_file(&library_dir, "second.md", "Second fragment");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.arg("combo");
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert_eq!(stdout, "First fragment without newline\nSecond fragment\n");
+}
+
+#[test]
 fn stdin_provides_first_argument() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

@@ -534,7 +534,7 @@ prompts = ["echo.md"]
 "#,
     )
     .unwrap();
-    write_file(&library_dir, "echo.md", "Echo\n");
+    write_file(&library_dir, "echo.md", "Echo {0}\n");
 
     let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
     cmd.args(["show", "echo", "--json"]);
@@ -552,6 +552,18 @@ prompts = ["echo.md"]
             .unwrap()
             .ends_with("config.toml")
     );
+
+    let profile = json["profile"].as_object().expect("profile present");
+    assert_eq!(profile["kind"], Value::from("sequence"));
+
+    let parts = profile["parts"].as_array().expect("parts present");
+    assert_eq!(parts.len(), 1);
+    let first_part = parts.first().unwrap().as_object().expect("part object");
+    let part_path = first_part["path"].as_str().expect("part path");
+    assert!(part_path.ends_with("echo.md"));
+    assert_eq!(first_part["content"], Value::from("Echo {0}\n"));
+
+    assert_eq!(profile["content"], Value::from("Echo {0}\n"));
 }
 
 #[test]

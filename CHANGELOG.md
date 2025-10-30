@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0 - 2025-10-30
+
+- add prompt profile details to `pa show --json`, including each fragment and the combined content
+- expose prompt fragments in the library with `PromptAssembler::prompt_profile` for tools that need raw parts
+
 ## 0.2.0 - 2025-10-18
 
 - add a `pa parts` subcommand to concatenate prompt fragments from the working directory or configured `prompt_path`

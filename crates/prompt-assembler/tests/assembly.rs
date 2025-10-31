@@ -302,7 +302,7 @@ fn config_errors_when_prompt_defines_sequence_and_template() {
     write_config(
         root,
         r#"
-        prompt_path = "~/.config/prompt-assembler/"
+        prompt_path = "~/.config/pa/"
 
         [prompt.invalid]
         prompts = ["a.md"]
@@ -333,7 +333,7 @@ fn config_errors_when_prompt_sequence_is_empty() {
     write_config(
         root,
         r#"
-        prompt_path = "~/.config/prompt-assembler/"
+        prompt_path = "~/.config/pa/"
 
         [prompt.empty]
         prompts = []
@@ -405,7 +405,7 @@ fn config_errors_on_unknown_prompt_key() {
     write_config(
         root,
         r#"
-        prompt_path = "~/.config/prompt-assembler/"
+        prompt_path = "~/.config/pa/"
 
         [prompt.alpha]
         prompts = ["alpha.md"]

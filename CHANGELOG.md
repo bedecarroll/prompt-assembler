@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.0 - 2025-10-31
+
+- **BREAKING:** configuration now lives in `pa` under XDG paths on macOS and Linux, and `%APPDATA%\pa` on Windows; existing setups must be migrated manually
+- align CLI tests and documentation with the new directory layout so first-run initialization and examples match
+
 ## 0.4.0 - 2025-10-30
 
 - add a built-in `pa self-update` command powered by GitHub releases, replacing the need for a separate updater binary

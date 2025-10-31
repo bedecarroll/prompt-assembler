@@ -23,7 +23,7 @@ fn write_file(dir: &Utf8Path, relative: &str, contents: &str) {
 fn prepare_config(temp: &TempDir) -> (Utf8PathBuf, Utf8PathBuf) {
     let root = utf8_path(temp.path());
     let xdg_config_home = root.join("xdg-config");
-    let library_dir = xdg_config_home.join("prompt-assembler");
+    let library_dir = xdg_config_home.join("pa");
     fs::create_dir_all(library_dir.as_std_path()).unwrap();
 
     (xdg_config_home, library_dir)
@@ -41,7 +41,7 @@ fn first_run_creates_default_config() {
     let temp = TempDir::new().unwrap();
     let root = utf8_path(temp.path());
     let xdg_config_home = root.join("xdg-config");
-    let library_dir = xdg_config_home.join("prompt-assembler");
+    let library_dir = xdg_config_home.join("pa");
 
     let mut cmd = Command::cargo_bin("pa").unwrap();
     cmd.env("XDG_CONFIG_HOME", xdg_config_home.as_str());

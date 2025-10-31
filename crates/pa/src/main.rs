@@ -626,15 +626,37 @@ fn parse_data_argument(raw: &str) -> Result<StructuredData> {
 }
 
 fn discover_config_dir() -> Result<Utf8PathBuf> {
-    if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
-        let base = Utf8PathBuf::from(xdg_home);
-        return Ok(base.join("prompt-assembler"));
+    #[cfg(windows)]
+    {
+        let base = if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
+            Utf8PathBuf::from(xdg_home)
+        } else {
+            let base_dirs = BaseDirs::new().ok_or_else(|| {
+                anyhow!("unable to locate home directory while resolving config path")
+            })?;
+            let root = base_dirs.config_dir();
+            Utf8PathBuf::from_path_buf(root.to_path_buf())
+                .map_err(|_| anyhow!("config path is not valid UTF-8"))?
+        };
+
+        Ok(base.join("pa"))
     }
 
-    let base_dirs =
-        BaseDirs::new().ok_or_else(|| anyhow!("unable to locate XDG config directory"))?;
-    let path = base_dirs.config_dir().join("prompt-assembler");
-    Utf8PathBuf::from_path_buf(path).map_err(|_| anyhow!("config path is not valid UTF-8"))
+    #[cfg(not(windows))]
+    {
+        let base = if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
+            Utf8PathBuf::from(xdg_home)
+        } else {
+            let base_dirs = BaseDirs::new().ok_or_else(|| {
+                anyhow!("unable to locate home directory while resolving config path")
+            })?;
+            let fallback = base_dirs.home_dir().join(".config");
+            Utf8PathBuf::from_path_buf(fallback)
+                .map_err(|_| anyhow!("config path is not valid UTF-8"))?
+        };
+
+        Ok(base.join("pa"))
+    }
 }
 
 fn ensure_config_initialized(config_dir: &Utf8Path) -> Result<()> {

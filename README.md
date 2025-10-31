@@ -23,9 +23,9 @@ Create your own library of snippets to assemble prompts.
 ## Features
 
 - Uses XDG
-  - ~/.config/prompt-assembler/
+  - ~/.config/pa/
 - Supports splitting your configuration
-  - ~/.config/prompt-assembler/conf.d/
+  - ~/.config/pa/conf.d/
   - uses lexical order
 - Uses TOML for config
 - `prompt_path` is optional; when omitted, prompt files are resolved relative to the directory containing `config.toml`
@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt
 ### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler --version 0.4.0
+cargo install prompt-assembler --version 0.5.0
 ```
 
 > **Note**  
@@ -78,10 +78,10 @@ On Unix-like systems, make sure one of those directories is on your `PATH`. On W
 ## Config file
 
 ```toml
-prompt_path = "~/.config/prompt-assembler/"
+prompt_path = "~/.config/pa/"
 
 [prompt.create-ticket]
-prompt_path = "~/.config/prompt-assembler/"
+prompt_path = "~/.config/pa/"
 # Paths, in order
 prompts = [
   "ticket.md"
@@ -104,8 +104,8 @@ prompts = ["echo.md"]
 
 Configuration follows the XDG base directory spec:
 
-- Base directory: `~/.config/prompt-assembler/`
-- Optional fragments: any `*.toml` file inside `~/.config/prompt-assembler/conf.d/` are loaded in lexical order.
+- Base directory: `~/.config/pa/`
+- Optional fragments: any `*.toml` file inside `~/.config/pa/conf.d/` are loaded in lexical order.
 - If a prompt omits `prompt_path`, prompt fragments are resolved relative to the directory that contained the TOML file where the prompt was defined.
 
 ## Examples
@@ -220,7 +220,7 @@ Keep `pa` current without reinstalling:
 
 ```bash
 $ pa self-update
-$ pa self-update --version v0.4.0
+$ pa self-update --version v0.5.0
 ```
 
 The command downloads the requested release from GitHub, swaps in the new binary, and reports whether an update was applied. When running in CI or other tight loops, set `PA_GITHUB_TOKEN` to avoid GitHub rate limits.

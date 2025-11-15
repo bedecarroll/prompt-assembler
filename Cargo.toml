@@ -12,14 +12,14 @@ edition = "2024"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
-directories = "5"
-minijinja = { version = "1", features = ["loader"] }
+directories = "6"
+minijinja = { version = "2", features = ["loader"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
-toml = "0.8"
+toml = "0.9"
 camino = "1"
-thiserror = "1"
+thiserror = "2"
 indexmap = { version = "2", features = ["serde"] }
 assert_cmd = "2"
 predicates = "3"

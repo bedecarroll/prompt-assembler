@@ -13,7 +13,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 directories = "5"
-minijinja = { version = "1", features = ["loader"] }
+minijinja = { version = "2", features = ["loader"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"

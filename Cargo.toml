@@ -12,7 +12,7 @@ edition = "2024"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
-directories = "5"
+directories = "6"
 minijinja = { version = "1", features = ["loader"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

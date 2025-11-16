@@ -22,3 +22,6 @@
 - Run `cargo fmt`, `cargo clippy --all-targets -- -D warnings -D clippy::pedantic`, `cargo test`, and corresponding `mise` tasks before completion.
 - Prefer integration tests for CLI behavior and unit tests for internal modules; cover edge cases (missing files, bad data, argument mismatches).
 - Document any deviations from these rules in PR notes and update this guide when practices evolve.
+
+## Review Workflow
+- When triaging GitHub review feedback, grab inline comments directly using `gh api repos/bedecarroll/prompt-assembler/pulls/<pr-number>/comments --jq '.[] | {id, path, body}'` so you only see file-specific remarks (skip the general PR discussion). Copy the `id` from that output when you need to reply or resolve via the CLI.

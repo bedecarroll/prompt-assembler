@@ -226,9 +226,9 @@ fn handle_show(config_dir: &Utf8Path, args: &ShowArgs) -> Result<()> {
             if args.json {
                 let profile = assembler.prompt_profile(&args.name)?;
                 let profile = Some(profile_to_json(profile));
-                print_prompt_json(&args.name, spec, profile)?;
+                print_prompt_json(&assembler, &args.name, spec, profile)?;
             } else {
-                print_prompt_human(&args.name, spec);
+                print_prompt_human(&assembler, &args.name, spec)?;
             }
         }
         Err(LoadConfigError::Invalid { diagnostics }) => {
@@ -348,8 +348,11 @@ fn print_list_json(assembler: &PromptAssembler) -> Result<()> {
     let prompts: Vec<JsonPrompt> = assembler
         .prompt_specs()
         .iter()
-        .map(|(name, spec)| prompt_to_json(name, spec, None))
-        .collect();
+        .map(|(name, spec)| {
+            let stdin_supported = assembler.inferred_stdin_supported(name, spec)?;
+            Ok(prompt_to_json(name, spec, None, stdin_supported))
+        })
+        .collect::<Result<_>>()?;
 
     let payload = ListEnvelope {
         schema_version: SCHEMA_VERSION,
@@ -363,17 +366,19 @@ fn print_list_json(assembler: &PromptAssembler) -> Result<()> {
 }
 
 fn print_prompt_json(
+    assembler: &PromptAssembler,
     name: &str,
     spec: &PromptSpec,
     profile: Option<JsonPromptProfile>,
 ) -> Result<()> {
-    let payload = prompt_to_json(name, spec, profile);
+    let stdin_supported = assembler.inferred_stdin_supported(name, spec)?;
+    let payload = prompt_to_json(name, spec, profile, stdin_supported);
     let rendered = serde_json::to_string_pretty(&payload)?;
     println!("{rendered}");
     Ok(())
 }
 
-fn print_prompt_human(name: &str, spec: &PromptSpec) {
+fn print_prompt_human(assembler: &PromptAssembler, name: &str, spec: &PromptSpec) -> Result<()> {
     println!("name: {name}");
 
     match spec.kind {
@@ -389,13 +394,10 @@ fn print_prompt_human(name: &str, spec: &PromptSpec) {
         println!("tags: {}", spec.metadata.tags.join(", "));
     }
 
+    let stdin_supported = assembler.inferred_stdin_supported(name, spec)?;
     println!(
         "stdin supported: {}",
-        if effective_stdin_supported(spec) {
-            "yes"
-        } else {
-            "no"
-        }
+        if stdin_supported { "yes" } else { "no" }
     );
 
     if let Some(last_modified) = format_system_time(spec.metadata.source.last_modified) {
@@ -418,6 +420,7 @@ fn print_prompt_human(name: &str, spec: &PromptSpec) {
             println!("{details}");
         }
     }
+    Ok(())
 }
 
 fn print_validate_json(errors: &[ConfigIssue], warnings: &[ConfigIssue]) -> Result<()> {
@@ -433,13 +436,18 @@ fn print_validate_json(errors: &[ConfigIssue], warnings: &[ConfigIssue]) -> Resu
     Ok(())
 }
 
-fn prompt_to_json(name: &str, spec: &PromptSpec, profile: Option<JsonPromptProfile>) -> JsonPrompt {
+fn prompt_to_json(
+    name: &str,
+    spec: &PromptSpec,
+    profile: Option<JsonPromptProfile>,
+    stdin_supported: bool,
+) -> JsonPrompt {
     JsonPrompt {
         name: name.to_string(),
         description: spec.metadata.description.clone(),
         tags: spec.metadata.tags.clone(),
         vars: convert_vars(&spec.metadata.vars),
-        stdin_supported: effective_stdin_supported(spec),
+        stdin_supported,
         last_modified: format_system_time(spec.metadata.source.last_modified),
         source_path: spec.metadata.source.path.as_str().to_owned(),
         profile,
@@ -517,12 +525,6 @@ fn exit_with_load_error(err: LoadConfigError) -> ! {
             process::exit(2);
         }
     }
-}
-
-fn effective_stdin_supported(spec: &PromptSpec) -> bool {
-    spec.metadata
-        .stdin_supported
-        .unwrap_or(matches!(spec.kind, PromptKind::Sequence { .. }))
 }
 
 fn current_timestamp() -> String {

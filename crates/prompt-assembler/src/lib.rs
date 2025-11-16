@@ -1,7 +1,7 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use anyhow::{Context, anyhow, bail};
@@ -176,7 +176,7 @@ pub enum LoadConfigError {
 pub struct PromptAssembler {
     config: Config,
     warnings: Vec<ConfigIssue>,
-    stdin_usage: RefCell<HashMap<String, bool>>,
+    stdin_usage: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,7 +212,7 @@ impl PromptAssembler {
         Ok(Self {
             config,
             warnings,
-            stdin_usage: RefCell::new(HashMap::new()),
+            stdin_usage: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -433,7 +433,13 @@ impl PromptAssembler {
         files: &[Utf8PathBuf],
         spec: &PromptSpec,
     ) -> Result<bool> {
-        if let Some(value) = self.stdin_usage.borrow().get(name).copied() {
+        if let Some(value) = self
+            .stdin_usage
+            .lock()
+            .map_err(|err| anyhow!("stdin usage cache poisoned: {err}"))?
+            .get(name)
+            .copied()
+        {
             return Ok(value);
         }
 
@@ -453,7 +459,8 @@ impl PromptAssembler {
         }
 
         self.stdin_usage
-            .borrow_mut()
+            .lock()
+            .map_err(|err| anyhow!("stdin usage cache poisoned: {err}"))?
             .insert(name.to_string(), consumes_stdin);
         Ok(consumes_stdin)
     }

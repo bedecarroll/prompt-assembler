@@ -55,6 +55,11 @@ targets = [
 pr-run-mode = "plan"
 # Build only the required packages, and individually
 precise-builds = true
+# Allow local tweaks to GitHub workflows without breaking cargo-dist plan
+allow-dirty = [
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+]
 # Path that installers should place binaries in
 install-path = ["$PA_INSTALL_DIR/bin", "~/.local/bin"]
 # Whether to install an updater program

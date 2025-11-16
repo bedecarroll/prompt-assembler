@@ -537,6 +537,54 @@ prompts = ["beta.md"]
 }
 
 #[test]
+fn autodetects_stdin_usage_for_sequences() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+[prompt.pipe]
+prompts = ["pipe.md"]
+
+[prompt.static]
+prompts = ["static.md"]
+"#,
+    )
+    .unwrap();
+
+    write_file(&library_dir, "pipe.md", "Piped value {0}\\n");
+    write_file(&library_dir, "static.md", "No stdin here\\n");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["list", "--json"]);
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let prompts = json["prompts"].as_array().unwrap();
+
+    let pipe = prompts
+        .iter()
+        .find(|entry| entry["name"] == "pipe")
+        .expect("pipe prompt present");
+    assert!(pipe["stdin_supported"].as_bool().unwrap());
+
+    let static_prompt = prompts
+        .iter()
+        .find(|entry| entry["name"] == "static")
+        .expect("static prompt present");
+    assert!(!static_prompt["stdin_supported"].as_bool().unwrap());
+
+    let mut show_cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    show_cmd.args(["show", "static", "--json"]);
+    let assert = show_cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["stdin_supported"], Value::from(false));
+}
+
+#[test]
 fn show_json_returns_prompt() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

@@ -33,7 +33,7 @@ Create your own library of snippets to assemble prompts.
   - Use `{{` for literal curly braces in fragments
   - Beware of making overly long prompts however as you might run into shell limitations
 - Concatenate raw parts on demand with `pa parts`, which skips placeholder substitution so braces like `{0}` remain literal
-- Sequence prompts can consume piped stdin as their first argument (`{0}`)
+- Sequence prompts can consume piped stdin as their first argument (`{0}`), and metadata auto-detects that usage so launchers only see `stdin_supported = true` when `{0}` actually appears (you can still override it via `stdin = true/false`)
 - Can use Jinja templates (using minijinja)
   - Allows you to create parameterized templates
 - Template data files support JSON or TOML formats (auto-detected by extension)

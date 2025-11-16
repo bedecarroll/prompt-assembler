@@ -29,8 +29,12 @@ fn prepare_config(temp: &TempDir) -> (Utf8PathBuf, Utf8PathBuf) {
     (xdg_config_home, library_dir)
 }
 
+fn base_command() -> Command {
+    Command::new(assert_cmd::cargo::cargo_bin!("pa"))
+}
+
 fn command_with_xdg(temp: &TempDir, xdg_config_home: &Utf8Path) -> Command {
-    let mut cmd = Command::cargo_bin("pa").unwrap();
+    let mut cmd = base_command();
     cmd.env("XDG_CONFIG_HOME", xdg_config_home);
     cmd.current_dir(temp.path());
     cmd
@@ -43,7 +47,7 @@ fn first_run_creates_default_config() {
     let xdg_config_home = root.join("xdg-config");
     let library_dir = xdg_config_home.join("pa");
 
-    let mut cmd = Command::cargo_bin("pa").unwrap();
+    let mut cmd = base_command();
     cmd.env("XDG_CONFIG_HOME", xdg_config_home.as_str());
     cmd.current_dir(temp.path());
     cmd.args(["validate", "--json"]);

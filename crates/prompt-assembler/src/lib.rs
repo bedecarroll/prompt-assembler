@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use anyhow::{Context, anyhow, bail};
@@ -175,6 +176,7 @@ pub enum LoadConfigError {
 pub struct PromptAssembler {
     config: Config,
     warnings: Vec<ConfigIssue>,
+    stdin_usage: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,7 +209,11 @@ impl PromptAssembler {
     /// invalid definitions.
     pub fn load_with_diagnostics(dir: &Utf8Path) -> std::result::Result<Self, LoadConfigError> {
         let ConfigLoad { config, warnings } = load_config(dir)?;
-        Ok(Self { config, warnings })
+        Ok(Self {
+            config,
+            warnings,
+            stdin_usage: Arc::new(Mutex::new(HashMap::new())),
+        })
     }
 
     /// Assemble the prompt identified by `name` using provided arguments and optional data.
@@ -282,6 +288,22 @@ impl PromptAssembler {
     #[must_use]
     pub fn prompt_spec(&self, name: &str) -> Option<&PromptSpec> {
         self.config.prompts.get(name)
+    }
+
+    /// Resolve whether a prompt effectively supports stdin, honoring explicit overrides.
+    ///
+    /// # Errors
+    /// Returns an error when prompt fragments cannot be read or contain invalid
+    /// placeholder syntax.
+    pub fn inferred_stdin_supported(&self, name: &str, spec: &PromptSpec) -> Result<bool> {
+        if let Some(explicit) = spec.metadata.stdin_supported {
+            return Ok(explicit);
+        }
+
+        match &spec.kind {
+            PromptKind::Sequence { files } => self.sequence_consumes_stdin(name, files, spec),
+            PromptKind::Template { .. } => Ok(false),
+        }
     }
 
     #[must_use]
@@ -401,6 +423,46 @@ impl PromptAssembler {
         }
 
         bail!("missing part '{raw}'")
+    }
+}
+
+impl PromptAssembler {
+    fn sequence_consumes_stdin(
+        &self,
+        name: &str,
+        files: &[Utf8PathBuf],
+        spec: &PromptSpec,
+    ) -> Result<bool> {
+        if let Some(value) = self
+            .stdin_usage
+            .lock()
+            .map_err(|err| anyhow!("stdin usage cache poisoned: {err}"))?
+            .get(name)
+            .copied()
+        {
+            return Ok(value);
+        }
+
+        let base = self
+            .resolve_prompt_path(spec)
+            .context("prompt missing prompt_path")?;
+
+        let mut consumes_stdin = false;
+        for file in files {
+            let full_path = base.join(file);
+            let content = read_utf8(full_path.as_ref())
+                .with_context(|| format!("failed to read fragment '{file}' for prompt '{name}'"))?;
+            if references_placeholder(&content, 0)? {
+                consumes_stdin = true;
+                break;
+            }
+        }
+
+        self.stdin_usage
+            .lock()
+            .map_err(|err| anyhow!("stdin usage cache poisoned: {err}"))?
+            .insert(name.to_string(), consumes_stdin);
+        Ok(consumes_stdin)
     }
 }
 
@@ -781,6 +843,62 @@ fn substitute_placeholders(template: &str, args: &[String]) -> Result<String> {
     }
 
     Ok(output)
+}
+
+fn references_placeholder(template: &str, needle: usize) -> Result<bool> {
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => match chars.peek() {
+                Some('{') => {
+                    chars.next();
+                }
+                Some(_) => {
+                    let mut digits = String::new();
+                    while let Some(peek) = chars.peek() {
+                        if peek.is_ascii_digit() {
+                            digits.push(*peek);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if digits.is_empty() {
+                        bail!("empty placeholder braces are not allowed");
+                    }
+
+                    let index = digits
+                        .parse::<usize>()
+                        .map_err(|_| anyhow!("invalid placeholder index '{digits}'"))?;
+
+                    match chars.next() {
+                        Some('}') => {}
+                        _ => bail!("unterminated placeholder '{{{digits}'"),
+                    }
+
+                    if index > 9 {
+                        bail!("positional placeholders support up to 9 arguments");
+                    }
+
+                    if index == needle {
+                        return Ok(true);
+                    }
+                }
+                None => bail!("unterminated placeholder at end of template"),
+            },
+            '}' => match chars.peek() {
+                Some('}') => {
+                    chars.next();
+                }
+                _ => bail!("unmatched closing brace '}}'"),
+            },
+            _ => {}
+        }
+    }
+
+    Ok(false)
 }
 
 fn render_template(

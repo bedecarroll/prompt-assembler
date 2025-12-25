@@ -61,9 +61,9 @@ install-path = ["$PA_INSTALL_DIR/bin", "~/.local/bin"]
 install-updater = false
 
 [workspace.metadata.dist.github-action-commits]
-"actions/checkout" = "v5"
-"actions/upload-artifact" = "v5"
-"actions/download-artifact" = "v6"
+"actions/checkout" = "v6"
+"actions/upload-artifact" = "v6"
+"actions/download-artifact" = "v7"
 
 [workspace.lints.rust]
 warnings = "deny"

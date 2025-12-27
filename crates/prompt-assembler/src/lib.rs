@@ -301,7 +301,9 @@ impl PromptAssembler {
         }
 
         match &spec.kind {
-            PromptKind::Sequence { files } => self.sequence_consumes_stdin(name, files, spec),
+            PromptKind::Sequence { files } => Ok(self
+                .sequence_consumes_stdin(name, files, spec)
+                .unwrap_or(false)),
             PromptKind::Template { .. } => Ok(false),
         }
     }

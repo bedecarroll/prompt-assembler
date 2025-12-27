@@ -585,6 +585,37 @@ prompts = ["static.md"]
 }
 
 #[test]
+fn list_json_treats_stdin_inference_errors_as_false() {
+    let temp = TempDir::new().unwrap();
+    let (xdg_home, library_dir) = prepare_config(&temp);
+
+    fs::write(
+        library_dir.join("config.toml").as_std_path(),
+        r#"
+[prompt.bad]
+prompts = ["bad.md"]
+"#,
+    )
+    .unwrap();
+
+    write_file(&library_dir, "bad.md", "Broken {");
+
+    let mut cmd = command_with_xdg(&temp, xdg_home.as_ref());
+    cmd.args(["list", "--json"]);
+
+    let assert = cmd.assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let prompts = json["prompts"].as_array().unwrap();
+
+    let bad = prompts
+        .iter()
+        .find(|entry| entry["name"] == "bad")
+        .expect("bad prompt present");
+    assert_eq!(bad["stdin_supported"], Value::from(false));
+}
+
+#[test]
 fn show_json_returns_prompt() {
     let temp = TempDir::new().unwrap();
     let (xdg_home, library_dir) = prepare_config(&temp);

@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/bedecarroll/prompt
 ### Cargo (alternative)
 
 ```bash
-cargo install prompt-assembler --version 0.5.0
+cargo install prompt-assembler --version 0.6.0
 ```
 
 > **Note**  
@@ -220,7 +220,7 @@ Keep `pa` current without reinstalling:
 
 ```bash
 $ pa self-update
-$ pa self-update --version v0.5.0
+$ pa self-update --version v0.6.0
 ```
 
 The command downloads the requested release from GitHub, swaps in the new binary, and reports whether an update was applied. When running in CI or other tight loops, set `PA_GITHUB_TOKEN` to avoid GitHub rate limits.

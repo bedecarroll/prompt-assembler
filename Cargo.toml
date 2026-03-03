@@ -37,7 +37,7 @@ dist.run = "cargo dist"
 # Config for 'dist'
 [workspace.metadata.dist]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.30.2"
+cargo-dist-version = "0.30.3"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -62,8 +62,8 @@ install-updater = false
 
 [workspace.metadata.dist.github-action-commits]
 "actions/checkout" = "v6"
-"actions/upload-artifact" = "v6"
-"actions/download-artifact" = "v7"
+"actions/upload-artifact" = "v7"
+"actions/download-artifact" = "v8"
 
 [workspace.lints.rust]
 warnings = "deny"

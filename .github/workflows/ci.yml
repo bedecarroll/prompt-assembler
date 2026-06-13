@@ -38,7 +38,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install typos
-        uses: taiki-e/install-action@25435dc8dd3baed7417e0c96d3fe89013a5b2e09
+        uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e
         with:
           tool: typos
 

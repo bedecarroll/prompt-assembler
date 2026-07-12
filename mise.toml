@@ -1,0 +1,34 @@
+min_version = "2025.9.10"
+
+[tools]
+"cargo:cargo-deny" = "latest"
+"cargo:cargo-nextest" = "latest"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "Clippy (workspace lints), typos, and dependency audit"
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "typos",
+  "cargo deny check",
+]
+
+[tasks.lint-fix]
+description = "Auto-fix formatting and spelling issues"
+run = ["cargo fmt --all", "typos -w"]
+
+[tasks.test]
+description = "Run test suite"
+run = "cargo nextest run --workspace --all-targets"
+
+[tasks.check]
+description = "Aggregate format, lint, and test runs"
+depends = ["fmt", "lint", "test"]
+
+[tasks.dist]
+description = "Build release artifacts with cargo-dist"
+run = "cargo dist"

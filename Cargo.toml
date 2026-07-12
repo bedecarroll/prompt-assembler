@@ -1,0 +1,78 @@
+[workspace]
+members = [
+    "crates/prompt-assembler",
+    "crates/pa",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+directories = "6"
+minijinja = { version = "2", features = ["loader"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "1.1"
+camino = "1"
+thiserror = "2"
+indexmap = { version = "2", features = ["serde"] }
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+insta = { version = "1", features = ["yaml"] }
+time = { version = "0.3", features = ["formatting", "std"] }
+
+[workspace.metadata.mise.tasks]
+fmt.run = "cargo fmt"
+clippy.run = "cargo clippy --all-targets -- -D warnings -D clippy::pedantic"
+unit.run = "cargo test"
+dist.run = "cargo dist"
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.30.3"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
+]
+# Which actions to run on pull requests
+pr-run-mode = "plan"
+# Build only the required packages, and individually
+precise-builds = true
+# Path that installers should place binaries in
+install-path = ["$PA_INSTALL_DIR/bin", "~/.local/bin"]
+# Whether to install an updater program
+install-updater = false
+
+[workspace.metadata.dist.github-action-commits]
+"actions/checkout" = "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+"actions/upload-artifact" = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+"actions/download-artifact" = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+pedantic = "deny"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -1,0 +1,40 @@
+[package]
+name = "pa"
+version = "0.6.0"
+edition = "2024"
+rust-version.workspace = true
+license.workspace = true
+repository = "https://github.com/bedecarroll/prompt-assembler"
+
+[lints]
+workspace = true
+
+[package.metadata.dist]
+unix-archive = ".tar.gz"
+windows-archive = ".zip"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+directories.workspace = true
+camino.workspace = true
+prompt-assembler = { path = "../prompt-assembler" }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+self_update = { version = "0.42", default-features = false, features = [
+    "archive-tar",
+    "archive-zip",
+    "compression-flate2",
+    "compression-zip-deflate",
+    "rustls",
+] }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+camino.workspace = true
+insta.workspace = true
+predicates.workspace = true
+serde_yaml.workspace = true
+tempfile.workspace = true

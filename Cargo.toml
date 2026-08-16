@@ -53,7 +53,7 @@ targets = [
     "x86_64-pc-windows-msvc",
 ]
 # Which actions to run on pull requests
-pr-run-mode = "plan"
+pr-run-mode = "skip"
 # Build only the required packages, and individually
 precise-builds = true
 # Path that installers should place binaries in

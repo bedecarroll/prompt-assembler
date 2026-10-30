@@ -270,7 +270,10 @@ fn handle_validate(config_dir: &Utf8Path, args: &ValidateArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_self_update(args: &SelfUpdateArgs) -> Result<()> {
+fn configure_self_updater(
+    args: &SelfUpdateArgs,
+    token: Option<&str>,
+) -> Result<self_update::backends::github::Update> {
     use self_update::backends::github::Update;
 
     const REPO_OWNER: &str = "bedecarroll";
@@ -291,23 +294,26 @@ fn handle_self_update(args: &SelfUpdateArgs) -> Result<()> {
         } else {
             format!("v{version}")
         };
-        builder.target_version_tag(&normalized);
+        builder.release_tag(normalized);
     }
 
-    if let Ok(token) = std::env::var("PA_GITHUB_TOKEN")
+    if let Some(token) = token
         && let token = token.trim()
         && !token.is_empty()
     {
         builder.auth_token(token);
     }
 
-    let status = builder
-        .build()
-        .context("failed to configure self-updater")?
+    builder.build().context("failed to configure self-updater")
+}
+
+fn handle_self_update(args: &SelfUpdateArgs) -> Result<()> {
+    let token = std::env::var("PA_GITHUB_TOKEN").ok();
+    let status = configure_self_updater(args, token.as_deref())?
         .update()
         .context("failed to apply update")?;
 
-    if status.updated() {
+    if status.is_updated() {
         println!("Updated pa to {}", status.version());
     } else {
         println!("pa is already up to date ({})", status.version());
@@ -712,5 +718,40 @@ fn read_stdin_if_available() -> Result<Option<String>> {
             }
         }
         Ok(Some(buffer))
+    }
+}
+
+#[cfg(test)]
+mod updater_tests {
+    use super::*;
+    use self_update::UpdateConfig;
+
+    #[test]
+    fn updater_preserves_release_selection_and_authentication() -> Result<()> {
+        for (version, expected) in [
+            (None, None),
+            (Some("1.2.3"), Some("v1.2.3")),
+            (Some("v1.2.3"), Some("v1.2.3")),
+        ] {
+            let args = SelfUpdateArgs {
+                version: version.map(str::to_owned),
+            };
+            let updater = configure_self_updater(&args, Some("  example-token  "))?;
+            assert_eq!(updater.release_tag(), expected);
+            assert_eq!(updater.auth_token(), Some("example-token"));
+            assert_eq!(updater.bin_name(), "pa");
+            assert_eq!(updater.current_version(), env!("CARGO_PKG_VERSION"));
+            assert!(updater.show_download_progress());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn updater_ignores_empty_authentication() -> Result<()> {
+        let args = SelfUpdateArgs { version: None };
+        for token in [None, Some(" ")] {
+            assert_eq!(configure_self_updater(&args, token)?.auth_token(), None);
+        }
+        Ok(())
     }
 }
